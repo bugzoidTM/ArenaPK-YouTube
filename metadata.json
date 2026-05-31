@@ -1,0 +1,6 @@
+{
+  "name": "ArenaPK YouTube",
+  "description": "Uma plataforma de batalhas PK dinâmica e eletrizante para criadores de conteúdo do YouTube, com placares em tempo real, chat, envio de presentes interativos e ranking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
