@@ -32,6 +32,9 @@ import DiscoverLivesView from './pages/DiscoverLivesView';
 import SpectatorProfileView from './pages/SpectatorProfileView';
 import DownloadStudioView from './pages/DownloadStudioView';
 
+// Studio Preview Feature Flag (default: false to hide creator workflows in production)
+const VITE_ENABLE_STUDIO_PREVIEW = (import.meta as any).env?.VITE_ENABLE_STUDIO_PREVIEW === 'true' || false;
+
 function AppContent() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -526,17 +529,19 @@ function AppContent() {
             >
               Sala Pública
             </button>
-            <button
-              onClick={() => setCurrentView('creator-dashboard')}
-              className={`px-3 py-1.5 rounded-lg transition border cursor-pointer flex items-center gap-1.5 ${
-                currentView === 'creator-dashboard' || currentView === 'creator-battle-hub' 
-                  ? 'bg-rose-500/15 border-rose-500/30 text-rose-400' 
-                  : 'border-transparent text-zinc-400 hover:text-zinc-100 hover:bg-white/5'
-              }`}
-            >
-              <Radio className="w-3.5 h-3.5" />
-              Painel Criador
-            </button>
+            {VITE_ENABLE_STUDIO_PREVIEW && (
+              <button
+                onClick={() => setCurrentView('creator-dashboard')}
+                className={`px-3 py-1.5 rounded-lg transition border cursor-pointer flex items-center gap-1.5 ${
+                  currentView === 'creator-dashboard' || currentView === 'creator-battle-hub' 
+                    ? 'bg-rose-500/15 border-rose-500/30 text-rose-400' 
+                    : 'border-transparent text-zinc-400 hover:text-zinc-100 hover:bg-white/5'
+                }`}
+              >
+                <Radio className="w-3.5 h-3.5" />
+                Painel Criador
+              </button>
+            )}
             <button
               onClick={() => setCurrentView('wallet')}
               className={`px-3 py-1.5 rounded-lg transition border cursor-pointer flex items-center gap-1 ${
@@ -595,35 +600,45 @@ function AppContent() {
             </div>
 
             {/* Sychronized Creator profile badge */}
-            {connectedCreator ? (
-              <div className="flex items-center gap-2 bg-zinc-900 border border-white/10 rounded-lg p-1.5 px-3 select-none">
-                <span className="text-[10px] text-zinc-400 font-bold hidden md:inline truncate max-w-[80px]">
-                  {connectedCreator.name}
-                </span>
-                
-                <img 
-                  onClick={() => setCurrentView('creator-dashboard')}
-                  src={connectedCreator.avatar} 
-                  alt="Avatar" 
-                  className="w-7 h-7 rounded-full object-cover border border-rose-500 cursor-pointer hover:opacity-85"
-                />
+            {VITE_ENABLE_STUDIO_PREVIEW ? (
+              connectedCreator ? (
+                <div className="flex items-center gap-2 bg-zinc-900 border border-white/10 rounded-lg p-1.5 px-3 select-none">
+                  <span className="text-[10px] text-zinc-400 font-bold hidden md:inline truncate max-w-[80px]">
+                    {connectedCreator.name}
+                  </span>
+                  
+                  <img 
+                    onClick={() => setCurrentView('creator-dashboard')}
+                    src={connectedCreator.avatar} 
+                    alt="Avatar" 
+                    className="w-7 h-7 rounded-full object-cover border border-rose-500 cursor-pointer hover:opacity-85"
+                  />
 
+                  <button
+                    type="button"
+                    onClick={handleDisconnectCreator}
+                    title="Desconectar do canal"
+                    className="p-1 rounded-full text-zinc-500 hover:text-rose-500 hover:bg-zinc-800 transition cursor-pointer"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
                 <button
-                  type="button"
-                  onClick={handleDisconnectCreator}
-                  title="Desconectar do canal"
-                  className="p-1 rounded-full text-zinc-500 hover:text-rose-450 hover:bg-zinc-800 transition cursor-pointer"
+                  onClick={() => setCurrentView('login')}
+                  className="px-4 py-2 text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white rounded-lg transition flex items-center gap-1.5 border border-white/10 cursor-pointer"
                 >
-                  <LogOut className="w-3.5 h-3.5" />
+                  <Youtube className="w-4 h-4 fill-current text-white" />
+                  Vincular Canal
                 </button>
-              </div>
+              )
             ) : (
               <button
-                onClick={() => setCurrentView('login')}
-                className="px-4 py-2 text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white rounded-lg transition flex items-center gap-1.5 border border-white/10 cursor-pointer"
+                onClick={() => setCurrentView('baixar-studio')}
+                className="px-4 py-2 text-xs font-bold bg-zinc-950 hover:bg-zinc-900 border border-white/10 text-rose-450 hover:text-rose-400 rounded-lg transition flex items-center gap-1.5 cursor-pointer select-none"
               >
-                <Youtube className="w-4 h-4 fill-current text-white" />
-                Vincular Canal
+                <span>📥</span>
+                Baixar Studio
               </button>
             )}
 
@@ -661,13 +676,15 @@ function AppContent() {
           <span>⚔️</span>
           Sala PK
         </button>
-        <button 
-          onClick={() => setCurrentView('creator-dashboard')} 
-          className={`flex flex-col items-center gap-1 transition ${currentView === 'creator-dashboard' || currentView === 'creator-battle-hub' ? 'text-rose-450' : 'text-zinc-500'}`}
-        >
-          <span>🎥</span>
-          Painel
-        </button>
+        {VITE_ENABLE_STUDIO_PREVIEW && (
+          <button 
+            onClick={() => setCurrentView('creator-dashboard')} 
+            className={`flex flex-col items-center gap-1 transition ${currentView === 'creator-dashboard' || currentView === 'creator-battle-hub' ? 'text-rose-450' : 'text-zinc-500'}`}
+          >
+            <span>🎥</span>
+            Painel
+          </button>
+        )}
         <button 
           onClick={() => setCurrentView('wallet')} 
           className={`flex flex-col items-center gap-1 transition ${currentView === 'wallet' ? 'text-amber-400' : 'text-zinc-500'}`}
@@ -707,44 +724,56 @@ function AppContent() {
             <Route 
               path="/login" 
               element={
-                <LoginConnectView
-                  onConnect={handleConnectCreator}
-                  isAlreadyConnected={!!connectedCreator}
-                  connectedCreator={connectedCreator}
-                  onDisconnect={handleDisconnectCreator}
-                />
+                VITE_ENABLE_STUDIO_PREVIEW ? (
+                  <LoginConnectView
+                    onConnect={handleConnectCreator}
+                    isAlreadyConnected={!!connectedCreator}
+                    connectedCreator={connectedCreator}
+                    onDisconnect={handleDisconnectCreator}
+                  />
+                ) : (
+                  <Navigate to="/baixar-studio" replace />
+                )
               } 
             />
 
             <Route 
               path="/criar-live" 
               element={
-                <CreateLiveView
-                  connectedCreator={connectedCreator}
-                  onNavigate={setCurrentView}
-                  onLiveCreated={handleStartLive}
-                />
+                VITE_ENABLE_STUDIO_PREVIEW ? (
+                  <CreateLiveView
+                    connectedCreator={connectedCreator}
+                    onNavigate={setCurrentView}
+                    onLiveCreated={handleStartLive}
+                  />
+                ) : (
+                  <Navigate to="/baixar-studio" replace />
+                )
               } 
             />
 
             <Route 
               path="/dashboard-criador" 
               element={
-                <CreatorDashboard
-                  connectedCreator={connectedCreator}
-                  onNavigate={setCurrentView}
-                  onStartLive={handleStartLive}
-                  onStopLive={handleStopLive}
-                  invites={invites.filter(i => connectedCreator && i.target.id === connectedCreator.id)}
-                  onAcceptInvite={handleAcceptInvite}
-                  onDeclineInvite={handleDeclineInvite}
-                  onSendInvite={handleSendInvite}
-                  allCreators={allCreators}
-                  onSimulateIncomingInvite={handleSimulateIncomingInvite}
-                  creatorEarningsBRL={creatorEarningsBRL}
-                  onStartPKRoom={handleStartPKRoom}
-                  activePKRoom={activePKRoom}
-                />
+                VITE_ENABLE_STUDIO_PREVIEW ? (
+                  <CreatorDashboard
+                    connectedCreator={connectedCreator}
+                    onNavigate={setCurrentView}
+                    onStartLive={handleStartLive}
+                    onStopLive={handleStopLive}
+                    invites={invites.filter(i => connectedCreator && i.target.id === connectedCreator.id)}
+                    onAcceptInvite={handleAcceptInvite}
+                    onDeclineInvite={handleDeclineInvite}
+                    onSendInvite={handleSendInvite}
+                    allCreators={allCreators}
+                    onSimulateIncomingInvite={handleSimulateIncomingInvite}
+                    creatorEarningsBRL={creatorEarningsBRL}
+                    onStartPKRoom={handleStartPKRoom}
+                    activePKRoom={activePKRoom}
+                  />
+                ) : (
+                  <Navigate to="/baixar-studio" replace />
+                )
               } 
             />
 
@@ -780,12 +809,16 @@ function AppContent() {
             <Route 
               path="/central-criador" 
               element={
-                <LivePKCreatorHub
-                  battle={battles.find(b => b.status === 'active' && connectedCreator && (b.creatorRed.id === connectedCreator.id || b.creatorBlue.id === connectedCreator.id)) || null}
-                  onNavigate={setCurrentView}
-                  onSimulateBigGifts={handleSimulateBigGifts}
-                  onForceEndBattle={handleForceEndBattle}
-                />
+                VITE_ENABLE_STUDIO_PREVIEW ? (
+                  <LivePKCreatorHub
+                    battle={battles.find(b => b.status === 'active' && connectedCreator && (b.creatorRed.id === connectedCreator.id || b.creatorBlue.id === connectedCreator.id)) || null}
+                    onNavigate={setCurrentView}
+                    onSimulateBigGifts={handleSimulateBigGifts}
+                    onForceEndBattle={handleForceEndBattle}
+                  />
+                ) : (
+                  <Navigate to="/baixar-studio" replace />
+                )
               } 
             />
 

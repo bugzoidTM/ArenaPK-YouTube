@@ -522,6 +522,7 @@ class FirebaseService {
         transaction.set(giftEventRef, {
           id: eventId,
           roomId,
+          isForCreatorA, // Keep for backward compatibility
           targetCreatorId: isForCreatorA ? roomData.creatorA.id : roomData.creatorB.id,
           targetSide: isForCreatorA ? "A" : "B",
           senderId: userId,
@@ -537,7 +538,8 @@ class FirebaseService {
           createdAt: new Date().toISOString(),
           timestamp: new Date().toISOString(), // Keep timestamp for backward compatibility
           deliveredAt: null,
-          renderedAt: null
+          renderedAt: null,
+          failureReason: null
         });
 
         // 9. Write the automatic message into chatMessages subcollection

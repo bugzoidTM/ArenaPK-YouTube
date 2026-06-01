@@ -103,6 +103,7 @@ class RealtimeService implements IRealtimeService {
   private currentRoomId: string | null = null;
   private listeners: { [key in PKEvent]?: Array<(payload: any) => void> } = {};
   private activeRoomSimulationInterval: any = null;
+  private simulationEnabled: boolean = false;
   
   // Observadores ativos do Firestore
   private roomUnsubscribe: (() => void) | null = null;
@@ -286,6 +287,7 @@ class RealtimeService implements IRealtimeService {
 
     // Ativa simulação incremental em background apenas em demo ou com env habilitador
     const runSimulation = enableSimulation || ((import.meta as any).env && (import.meta as any).env.VITE_ENABLE_DEMO_SIMULATION === 'true');
+    this.simulationEnabled = !!runSimulation;
     if (runSimulation) {
       this.startRoomSimulation(roomId);
     }
@@ -294,6 +296,7 @@ class RealtimeService implements IRealtimeService {
   public leaveRoom() {
     console.log(`[RealtimeService] Deixando a sala: ${this.currentRoomId}`);
     this.currentRoomId = null;
+    this.simulationEnabled = false;
     this.unsubscribeAll();
     this.stopRoomSimulation();
   }
@@ -347,7 +350,7 @@ class RealtimeService implements IRealtimeService {
           console.warn('[RealtimeService] Falha ao sincronizar chat no Firestore:', dbErr);
         }
 
-        if (!chatPayload.isSystem) {
+        if (!chatPayload.isSystem && this.simulationEnabled) {
           this.simulateQuickInteractions(chatPayload.message);
         }
 
