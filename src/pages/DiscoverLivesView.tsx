@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { Creator, PKBattle, PKRoom } from '../types';
 import { viewerService, ViewerMission, ViewerProfile } from '../services/viewerService';
-import { INITIAL_CREATORS } from '../services/pkService';
+import { INITIAL_CREATORS } from '../mocks/pkService';
 
 interface DiscoverLivesViewProps {
   onNavigate: (view: string) => void;

@@ -4,7 +4,7 @@
  */
 
 import { Gift } from '../types';
-import { GLOBAL_GIFTS } from './pkService';
+import { GLOBAL_GIFTS } from '../mocks/pkService';
 
 /**
  * Interface que define o contrato do catálogo e envio de Presentes interativos.

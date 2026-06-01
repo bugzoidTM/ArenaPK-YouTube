@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Wallet, Transaction, MarketCoinPack } from '../types';
-import { paymentService } from './paymentService';
+import { Wallet, Transaction } from '../types';
+import { auth } from './firebase';
+import { firebaseService } from './firebaseService';
 
 /**
  * Interface que define o contrato de gerenciamento financeiro de Carteiras e Transações.
@@ -27,32 +28,31 @@ export interface IWalletService {
 }
 
 /**
- * Serviço financeiro com mocks baseados no paymentService local e persistência local segura.
- * 
- * COMUTADOR FUTURO DE PRODUÇÃO:
- * - Operações delegadas a um gateway financeiro parceiro (ex: Asaas, Stripe, PagSeguro) através do backend:
- *   - `getWalletState` -> `GET /api/wallet`
- *   - `createCheckout` -> `POST /api/wallet/checkout`
- *   - `getTransactionHistory` -> `GET /api/wallet/transactions`
+ * Serviço financeiro com integração no Firebase Firestore.
  */
 class WalletService implements IWalletService {
   public async getWalletState(): Promise<Wallet> {
-    // FUTURO ENDPOINT REAL: GET /api/wallet
-    // Retorna saldo sincronizado diretamente da tabela SQL de carteiras.
-    const coins = paymentService.getCoins();
-    const earnings = paymentService.getEarnings();
-    return {
-      id: 'wallet-default',
-      userId: 'usr-default',
-      coinsBalance: coins,
-      earningsBRL: earnings
-    };
+    const userId = auth.currentUser?.uid || 'usr-default';
+    return firebaseService.getWallet(userId);
   }
 
   public async createCheckout(packId: string, paymentMethod: 'pix' | 'cc'): Promise<{ checkoutId: string; amountBRL: number; qrcode?: string }> {
-    // FUTURO ENDPOINT REAL: POST /api/wallet/checkout
-    // Geração dinâmica de Chave Copia e Cola Pix ou link de processamento transparente de cartão.
     await new Promise((resolve) => setTimeout(resolve, 600));
+    // Simulate buying coins and adding a transaction in Firestore
+    const userId = auth.currentUser?.uid || 'usr-default';
+    const txId = `tx-chk-${Date.now()}`;
+    await firebaseService.addTransaction({
+      id: txId,
+      userId,
+      type: 'purchase_coins',
+      coinsAmount: 1000,
+      brlAmount: 19.90,
+      description: 'Compra de Pacote de 1000 Moedas via checkout de simulação'
+    });
+    
+    // Increment wallet balance
+    await firebaseService.updateWalletBalance(userId, 1000, 0);
+
     return {
       checkoutId: `check-${Date.now()}`,
       amountBRL: 19.90,
@@ -61,18 +61,10 @@ class WalletService implements IWalletService {
   }
 
   public async getTransactionHistory(): Promise<Transaction[]> {
-    // FUTURO ENDPOINT REAL: GET /api/wallet/transactions
-    // Recupera toda o livro-caixa/ledger histórico do banco de dados relacional.
-    const sent = paymentService.getSentTransactions();
-    return sent.map((s, index) => ({
-      id: s.id,
-      userId: 'usr-default',
-      type: 'debit_gift',
-      coinsAmount: s.coinValue,
-      description: `Presente "${s.giftName} ${s.giftIcon}" enviado para @${s.creatorName}`,
-      timestamp: s.timestamp
-    }));
+    const userId = auth.currentUser?.uid || 'usr-default';
+    return firebaseService.getTransactions(userId);
   }
 }
 
 export const walletService = new WalletService();
+

@@ -10,11 +10,13 @@ import {
   Tv, Cpu, ShieldAlert, Award, AlertCircle, Trash2, VolumeX, Pin, Volume2, Shield, Info, Radio, Zap
 } from 'lucide-react';
 import { Creator, Gift, ChatMessage, PKRoom, SimulatedLive } from '../types';
-import { GLOBAL_GIFTS } from '../services/pkService';
+import { GLOBAL_GIFTS } from '../mocks/pkService';
 import { realtimeService, PKEvent } from '../services/realtimeService';
 import { paymentService } from '../services/paymentService';
 import { viewerService } from '../services/viewerService';
 import { moderationService } from '../services/moderationService';
+import { auth } from '../services/firebase';
+import { firebaseService } from '../services/firebaseService';
 
 interface PKRoomViewProps {
   room: PKRoom;
@@ -297,7 +299,7 @@ export default function PKRoomView({
     }, 2500);
   };
 
-  const handleSendGift = (gift: Gift, isForA: boolean) => {
+  const handleSendGift = async (gift: Gift, isForA: boolean) => {
     if (moderationService.isGiftsPaused()) {
       alert('O envio de presentes está temporariamente suspenso pelos administradores.');
       return;
@@ -315,32 +317,24 @@ export default function PKRoomView({
       return;
     }
 
-    // Deduct coins & write transaction in history ledger
-    const targetCreatorName = isForA ? room.creatorA.name : room.creatorB.name;
-    const debitRes = paymentService.debitCoins(gift.coinValue, {
-      creatorName: targetCreatorName,
-      gift: gift
-    });
+    const userId = auth.currentUser?.uid || 'usr-default';
+    const txRes = await firebaseService.sendGiftTransaction(
+      userId,
+      room.roomId,
+      gift,
+      isForA,
+      'Você (Super Doador)',
+      'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=100'
+    );
 
-    if (debitRes.success) {
-      onCoinsChange(debitRes.currentCoins);
-      // Progress "Enviar primeiro presente do dia" task
+    if (txRes.success) {
+      onCoinsChange(txRes.coinsBalance);
+      paymentService.setCoins(txRes.coinsBalance);
       viewerService.triggerMissionAction('send_gift', 1);
+      triggerFloatingAnimation('Você (Super Doador)', gift.name, gift.icon, isForA);
     } else {
-      alert('Moedas insuficientes ou erro ao debitar presente.');
-      return;
+      alert('Erro ao enviar o presente. Verifique seu saldo ou conexão.');
     }
-
-    // Send Gift payload over socket connection
-    realtimeService.sendEvent(PKEvent.GIFT_SENT, {
-      senderName: 'Você (Super Doador)',
-      senderAvatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=100',
-      giftName: gift.name,
-      giftIcon: gift.icon,
-      coinValue: gift.coinValue,
-      pkPointsBonus: gift.pkPointsBonus,
-      isForCreatorA: isForA
-    });
   };
 
   const handleSendChatMessage = (e: React.FormEvent) => {

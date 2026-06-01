@@ -1,0 +1,200 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile containing roles and identification details.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier of the user (UID)." },
+        "name": { "type": "string", "description": "Display name of the user." },
+        "email": { "type": "string", "description": "Safe, private email address." },
+        "role": { "type": "string", "enum": ["viewer", "sponsor", "moderator", "admin"], "description": "User privilege tier." },
+        "avatar": { "type": "string", "description": "Secure HTTPS URL for the avatar." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server-side creation timestamp." }
+      },
+      "required": ["id", "name", "role", "email"]
+    },
+    "Creator": {
+      "title": "Creator",
+      "description": "Creator channel record containing state and links.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier of the creator." },
+        "name": { "type": "string", "description": "Name of the creator." },
+        "channelName": { "type": "string", "description": "Handle or channel name." },
+        "avatar": { "type": "string", "description": "Safe avatar URL." },
+        "banner": { "type": "string", "description": "Banner artwork URL." },
+        "category": { "type": "string", "description": "Streaming Category (e.g. CS2, FreeFire)." },
+        "viewers": { "type": "integer", "description": "Estimated live viewer count." },
+        "liveTitle": { "type": "string", "description": "Title of active or scheduled live stream." },
+        "youtubeVideoId": { "type": "string", "description": "Active YouTube live video embed ID." },
+        "isOnline": { "type": "boolean", "description": "Active online/streaming state." },
+        "points": { "type": "integer", "description": "Accumulated PK victory or engagement points." }
+      },
+      "required": ["id", "name", "channelName", "isOnline", "points"]
+    },
+    "PKRoom": {
+      "title": "PKRoom",
+      "description": "Active PK arena and score synchronization details.",
+      "type": "object",
+      "properties": {
+        "roomId": { "type": "string", "description": "Unique ID of the PK Battle Room." },
+        "creatorA": { "type": "object", "description": "Details of the creator initiating or representing red side." },
+        "creatorB": { "type": "object", "description": "Details of the challenger creator representing blue side." },
+        "liveA": { "type": "object", "description": "Simulated live feed reference A." },
+        "liveB": { "type": "object", "description": "Simulated live feed reference B." },
+        "scoreA": { "type": "integer", "description": "Active PK bar points for creator A." },
+        "scoreB": { "type": "integer", "description": "Active PK bar points for creator B." },
+        "timer": { "type": "integer", "description": "Battle period countdown timer in seconds." },
+        "status": { "type": "string", "enum": ["active", "finished", "closed"], "description": "The current status of the duel." },
+        "viewers": { "type": "integer", "description": "Active spectator population." },
+        "gifts": { "type": "array", "description": "Aggregated list of gifts sent in this room session." },
+        "chatMessages": { "type": "array", "description": "Recent messages cached in the room state." },
+        "ranking": { "type": "array", "description": "Instant ranking of room supporters." }
+      },
+      "required": ["roomId", "creatorA", "creatorB", "scoreA", "scoreB", "timer", "status"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Individual message sent in some PK battle chat.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique message UUID." },
+        "senderName": { "type": "string", "description": "Display name of the sender." },
+        "senderAvatar": { "type": "string", "description": "Avatar image thumbnail." },
+        "role": { "type": "string", "description": "Role label of the commentator." },
+        "text": { "type": "string", "description": "Actual sanitized commentary content." },
+        "timestamp": { "type": "string", "description": "Time string of the event." },
+        "roomId": { "type": "string", "description": "Foreign key pointing to the target PKRoom." }
+      },
+      "required": ["id", "senderName", "text", "roomId", "timestamp"]
+    },
+    "Gift": {
+      "title": "Gift",
+      "description": "Metadata for individual static or animated gifts in the catalog.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique item designation." },
+        "name": { "type": "string", "description": "Visual label of the gift." },
+        "coinValue": { "type": "integer", "description": "Price tag in platform virtual coins." },
+        "icon": { "type": "string", "description": "Representative emoji indicator." },
+        "pkPointsBonus": { "type": "integer", "description": "Battle points metric contribution." }
+      },
+      "required": ["id", "name", "coinValue", "icon", "pkPointsBonus"]
+    },
+    "GiftEvent": {
+      "title": "GiftEvent",
+      "description": "Historic or live log of processed gifts within a dueling room.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Transaction serial." },
+        "roomId": { "type": "string", "description": "Associated PKRoom identification reference." },
+        "senderName": { "type": "string", "description": "The donating participant." },
+        "senderAvatar": { "type": "string", "description": "Donator visual avatar." },
+        "giftName": { "type": "string", "description": "Purchased item." },
+        "giftIcon": { "type": "string", "description": "Emoticon representer." },
+        "coinValue": { "type": "integer", "description": "Coins transacted during the purchase." },
+        "pkPointsBonus": { "type": "integer", "description": "Points accredited to the targeted creator." },
+        "isForCreatorA": { "type": "boolean", "description": "Whether the gift points went to representative A." },
+        "timestamp": { "type": "string", "description": "Action instant timestamp string." }
+      },
+      "required": ["id", "roomId", "senderName", "giftName", "coinValue", "isForCreatorA", "timestamp"]
+    },
+    "Wallet": {
+      "title": "Wallet",
+      "description": "Financial records of the account.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Private wallet token key." },
+        "userId": { "type": "string", "description": "Owning client user ID." },
+        "coinsBalance": { "type": "integer", "description": "Current virtual currency balance." },
+        "earningsBRL": { "type": "number", "description": "Cumulative real-world BRL balance." }
+      },
+      "required": ["id", "userId", "coinsBalance", "earningsBRL"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Safe ledger of user balance debits or credit top-ups.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Accounting transaction transaction ID." },
+        "userId": { "type": "string", "description": "Paying spectator user ID." },
+        "type": { "type": "string", "enum": ["purchase_coins", "debit_gift", "withdrawal"], "description": "Nature of action." },
+        "coinsAmount": { "type": "integer", "description": "Shorthand coin balance adjustment." },
+        "brlAmount": { "type": "number", "description": "Actual fiat volume impact (if applicable)." },
+        "description": { "type": "string", "description": "Details description annotation." },
+        "timestamp": { "type": "string", "description": "Timestamp date string." }
+      },
+      "required": ["id", "userId", "type", "coinsAmount", "timestamp"]
+    },
+    "Mission": {
+      "title": "Mission",
+      "description": "Individual mission parameters and user completion progression tracker.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Mission designation tag." },
+        "userId": { "type": "string", "description": "Assigned viewer ID." },
+        "title": { "type": "string", "description": "Exhibited visual description title." },
+        "description": { "type": "string", "description": "Instructions requirement explanation text." },
+        "xpReward": { "type": "integer", "description": "Experience points credited upon completion." },
+        "status": { "type": "string", "enum": ["pending", "in_progress", "completed"], "description": "Current status phase." },
+        "progress": { "type": "integer", "description": "Incremental progress count." }
+      },
+      "required": ["id", "userId", "title", "xpReward", "status", "progress"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "System trace audits containing occurrences of alerts or moderator blocks.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Trace UUID." },
+        "type": { "type": "string", "enum": ["moderator_action", "report", "ban_user", "pause_gifts", "close_room"], "description": "Log classification category." },
+        "details": { "type": "string", "description": "Brief description narrative explaining the event." },
+        "timestamp": { "type": "string", "description": "Human readable event date." }
+      },
+      "required": ["id", "type", "details", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Secure user registers containing roles and permissions."
+    },
+    "/creators/{creatorId}": {
+      "schema": "Creator",
+      "description": "Channels metadata and stream indexes."
+    },
+    "/pkRooms/{roomId}": {
+      "schema": "PKRoom",
+      "description": "Synchronized active and completed PK battle state caches."
+    },
+    "/chatMessages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Decoupled persistent duel messaging comments feed."
+    },
+    "/gifts/{giftId}": {
+      "schema": "Gift",
+      "description": "Platform global digital present catalog list."
+    },
+    "/giftEvents/{eventId}": {
+      "schema": "GiftEvent",
+      "description": "Activity stream feed of present occurrences exchanged in battles."
+    },
+    "/wallets/{walletId}": {
+      "schema": "Wallet",
+      "description": "Secured spectator coin purse entries."
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Platform ledger of accounting events."
+    },
+    "/missions/{userMissionId}": {
+      "schema": "Mission",
+      "description": "Gamified tasks assigned per spectator."
+    },
+    "/auditLogs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Platform audit trailing indicators and moderation actions logs."
+    }
+  }
+}

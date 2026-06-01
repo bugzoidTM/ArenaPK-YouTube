@@ -11,7 +11,7 @@ import {
   HelpCircle, Eye, Info, Layers, Maximize2, Tv, AlertCircle
 } from 'lucide-react';
 import { Creator, PKBattle, Gift, ChatMessage } from '../types';
-import { GLOBAL_GIFTS, RANDOM_NAMES, RANDOM_CHAT_PHRASES, MOCK_CHATS } from '../services/pkService';
+import { GLOBAL_GIFTS, RANDOM_NAMES, RANDOM_CHAT_PHRASES, MOCK_CHATS } from '../mocks/pkService';
 
 interface LivePKCreatorHubProps {
   battle: PKBattle | null;

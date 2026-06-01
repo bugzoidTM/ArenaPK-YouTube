@@ -8,9 +8,10 @@ import {
   User, Award, Trophy, Heart, History, TrendingUp, Sparkles, Share2, 
   Mail, Calendar, Flame, Zap, Tv, HeartHandshake, Users, ArrowRight, Star
 } from 'lucide-react';
-import { Creator } from '../types';
+import { Creator, User as AuthUser } from '../types';
 import { viewerService, ViewerProfile } from '../services/viewerService';
 import { paymentService, GiftTransaction } from '../services/paymentService';
+import { authService } from '../services/authService';
 
 interface SpectatorProfileViewProps {
   onNavigate: (view: string) => void;
@@ -23,12 +24,18 @@ export default function SpectatorProfileView({
 }: SpectatorProfileViewProps) {
   const [profile, setProfile] = useState<ViewerProfile>(() => viewerService.getProfile());
   const [sentGifts, setSentGifts] = useState<GiftTransaction[]>(() => paymentService.getSentTransactions());
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [activeSegment, setActiveSegment] = useState<'overview' | 'badges' | 'history' | 'favorites'>('overview');
   const [toastAlert, setToastAlert] = useState<string | null>(null);
 
   useEffect(() => {
     setProfile(viewerService.getProfile());
     setSentGifts(paymentService.getSentTransactions());
+    
+    // Carrega o usuário da sessão real
+    authService.getCurrentUser().then(user => {
+      setCurrentUser(user);
+    });
   }, []);
 
   const triggerToast = (msg: string) => {
@@ -36,6 +43,16 @@ export default function SpectatorProfileView({
     setTimeout(() => {
       setToastAlert(null);
     }, 3500);
+  };
+
+  const handleGoogleLogin = async () => {
+    try {
+      const loggedUser = await authService.signInWithGoogle();
+      setCurrentUser(loggedUser);
+      triggerToast(`Bem-vindo, ${loggedUser.name}! Autenticado com sucesso via Firebase.`);
+    } catch (err) {
+      triggerToast("Erro ao autenticar com Google.");
+    }
   };
 
   const handleToggleFavorite = (creatorId: string) => {
@@ -50,8 +67,10 @@ export default function SpectatorProfileView({
   // Count total coins donated to calculate support metrics
   const totalDonatedCoins = sentGifts.reduce((acc, tx) => acc + tx.coinValue, 0);
 
+  const isRealUser = currentUser && currentUser.id !== 'usr-default';
+
   return (
-    <div className="space-y-8 py-6 pb-20 relative z-10 selection:bg-rose-500 selection:text-white">
+    <div className="space-y-8 py-6 pb-20 relative z-10 selection:bg-rose-500 selection:text-white font-sans">
       
       {/* Toast Alert */}
       {toastAlert && (
@@ -67,31 +86,48 @@ export default function SpectatorProfileView({
         </div>
 
         <div className="flex flex-col sm:flex-row items-center gap-5 relative z-10 text-center sm:text-left">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-tr from-pink-500 via-rose-500 to-amber-500 rounded-3xl p-1 flex items-center justify-center shadow-xl shadow-rose-500/20 select-none">
-            <div className="w-full h-full bg-zinc-950 rounded-[22px] flex items-center justify-center text-white text-3xl font-black">
-              👤
+          {currentUser?.avatar ? (
+            <img 
+              src={currentUser.avatar} 
+              alt={currentUser.name} 
+              className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl object-cover border-2 border-rose-500 shadow-xl shadow-rose-500/10"
+            />
+          ) : (
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-tr from-pink-500 via-rose-500 to-amber-500 rounded-3xl p-1 flex items-center justify-center shadow-xl shadow-rose-500/20 select-none">
+              <div className="w-full h-full bg-zinc-950 rounded-[22px] flex items-center justify-center text-white text-3xl font-black">
+                👤
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="space-y-1.5">
-            <div className="flex flex-col sm:flex-row items-center gap-2">
+            <div className="flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-2">
               <h1 className="text-xl sm:text-2xl font-black text-white uppercase tracking-tight">
-                Perfil do Espectador
+                {currentUser?.name || 'Perfil de Testes'}
               </h1>
               <span className="text-[9px] font-mono font-black bg-rose-500/15 border border-rose-500/20 text-rose-450 px-2 py-0.5 rounded uppercase">
-                Apoiador Bronze
+                {isRealUser ? 'Conta Verificada' : 'Apoiador Bronze'}
               </span>
             </div>
             
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 text-xs text-zinc-500">
               <span className="flex items-center gap-1">
                 <Mail className="w-3.5 h-3.5 text-zinc-650" />
-                eleniltonfreitas2009@gmail.com
+                {currentUser?.email || 'demonstracao@arenapk.com'}
               </span>
               <span className="flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5 text-zinc-650" />
                 Membro desde Maio/2026
               </span>
+              
+              {!isRealUser && (
+                <button
+                  onClick={handleGoogleLogin}
+                  className="px-2.5 py-1 bg-zinc-950 border border-rose-500/30 text-[9px] font-black uppercase text-rose-400 rounded hover:bg-zinc-900 transition-all cursor-pointer font-sans tracking-wide"
+                >
+                  Conectar Conta Google Real
+                </button>
+              )}
             </div>
           </div>
         </div>

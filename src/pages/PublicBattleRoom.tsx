@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Swords, Send, Trophy, Sparkles, Gift as GiftIcon, Heart, Users, Star, MessageSquare, Flame } from 'lucide-react';
 import { Creator, PKBattle, Gift, ChatMessage } from '../types';
-import { GLOBAL_GIFTS, MOCK_CHATS, RANDOM_CHAT_PHRASES, RANDOM_NAMES } from '../services/pkService';
+import { GLOBAL_GIFTS, MOCK_CHATS, RANDOM_CHAT_PHRASES, RANDOM_NAMES } from '../mocks/pkService';
 import { paymentService } from '../services/paymentService';
 import { viewerService } from '../services/viewerService';
 import { moderationService } from '../services/moderationService';

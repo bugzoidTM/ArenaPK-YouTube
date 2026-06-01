@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Wallet, CreditCard, ChevronRight, Check, AlertCircle, ShoppingBag, ArrowUpRight, ArrowDownLeft, ShieldCheck, QrCode, AlertTriangle, Gift } from 'lucide-react';
 import { MarketCoinPack } from '../types';
-import { COIN_PACKS } from '../services/pkService';
+import { COIN_PACKS } from '../mocks/pkService';
 import { paymentService, GiftTransaction } from '../services/paymentService';
 
 interface ProfileWalletViewProps {

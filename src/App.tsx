@@ -12,22 +12,23 @@ import { Creator, PKBattle, Gift, PKInvite, SystemAuditLog, PKRoom, SimulatedLiv
 import { 
   INITIAL_CREATORS, INITIAL_INVITES, INITIAL_AUDIT_LOGS, 
   GLOBAL_GIFTS, RANDOM_NAMES, MOCK_CHATS
-} from './services/pkService';
+} from './mocks/pkService';
 import { paymentService } from './services/paymentService';
+import { firebaseService } from './services/firebaseService';
 
 // Import Views
-import LandingView from './components/LandingView';
-import LoginConnectView from './components/LoginConnectView';
-import CreatorDashboard from './components/CreatorDashboard';
-import PublicBattleRoom from './components/PublicBattleRoom';
-import LivePKCreatorHub from './components/LivePKCreatorHub';
-import ProfileWalletView from './components/ProfileWalletView';
-import RankingView from './components/RankingView';
-import ModerationView from './components/ModerationView';
-import CreateLiveView from './components/CreateLiveView';
-import PKRoomView from './components/PKRoomView';
-import DiscoverLivesView from './components/DiscoverLivesView';
-import SpectatorProfileView from './components/SpectatorProfileView';
+import LandingView from './pages/LandingView';
+import LoginConnectView from './pages/LoginConnectView';
+import CreatorDashboard from './pages/CreatorDashboard';
+import PublicBattleRoom from './pages/PublicBattleRoom';
+import LivePKCreatorHub from './pages/LivePKCreatorHub';
+import ProfileWalletView from './pages/ProfileWalletView';
+import RankingView from './pages/RankingView';
+import ModerationView from './pages/ModerationView';
+import CreateLiveView from './pages/CreateLiveView';
+import PKRoomView from './pages/PKRoomView';
+import DiscoverLivesView from './pages/DiscoverLivesView';
+import SpectatorProfileView from './pages/SpectatorProfileView';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<string>('landing');
@@ -57,6 +58,15 @@ export default function App() {
     // Inicializar creators padrão
     return INITIAL_CREATORS;
   });
+
+  useEffect(() => {
+    const unsub = firebaseService.subscribeToCreators((creatorsList) => {
+      if (creatorsList && creatorsList.length > 0) {
+        setAllCreators(creatorsList);
+      }
+    });
+    return () => unsub();
+  }, []);
 
   const [connectedCreator, setConnectedCreator] = useState<Creator | null>(null);
 

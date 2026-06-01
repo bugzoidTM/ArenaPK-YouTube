@@ -1,0 +1,196 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Common architectural primitives
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    
+    // User validation blueprint (Anti-Update-Gap)
+    function isValidUser(data) {
+      return data.keys().hasAll(['id', 'name', 'email', 'role']) 
+             && data.keys().size() <= 6
+             && data.id is string && isValidId(data.id)
+             && data.name is string && data.name.size() <= 100
+             && data.email is string && data.email.size() <= 200
+             && data.role is string && (data.role == 'viewer' || data.role == 'sponsor' || data.role == 'moderator' || data.role == 'admin');
+    }
+    
+    // Creator validation blueprint
+    function isValidCreator(data) {
+      return data.keys().hasAll(['id', 'name', 'channelName', 'isOnline', 'points'])
+             && data.keys().size() <= 12
+             && data.id is string && isValidId(data.id)
+             && data.name is string && data.name.size() <= 100
+             && data.channelName is string && data.channelName.size() <= 100
+             && data.isOnline is bool
+             && data.points is int;
+    }
+
+    // PKRoom verification blueprint
+    function isValidPKRoom(data) {
+      return data.keys().hasAll(['roomId', 'creatorA', 'creatorB', 'scoreA', 'scoreB', 'timer', 'status'])
+             && data.roomId is string && isValidId(data.roomId)
+             && data.scoreA is int
+             && data.scoreB is int
+             && data.timer is int
+             && (data.status == 'active' || data.status == 'finished' || data.status == 'closed');
+    }
+
+    // Chat Message verification blueprint
+    function isValidChatMessage(data) {
+      return data.keys().hasAll(['id', 'senderName', 'text', 'roomId', 'timestamp'])
+             && data.id is string && isValidId(data.id)
+             && data.senderName is string && data.senderName.size() <= 100
+             && data.text is string && data.text.size() <= 500
+             && data.roomId is string && isValidId(data.roomId)
+             && data.timestamp is string;
+    }
+
+    // Gift validation blueprint
+    function isValidGift(data) {
+      return data.keys().hasAll(['id', 'name', 'coinValue', 'icon', 'pkPointsBonus'])
+             && data.id is string
+             && data.name is string && data.name.size() <= 100
+             && data.coinValue is int
+             && data.icon is string && data.icon.size() <= 20
+             && data.pkPointsBonus is int;
+    }
+
+    // GiftEvent validation blueprint
+    function isValidGiftEvent(data) {
+      return data.keys().hasAll(['id', 'roomId', 'senderName', 'giftName', 'coinValue', 'isForCreatorA', 'timestamp'])
+             && data.id is string && isValidId(data.id)
+             && data.roomId is string && isValidId(data.roomId)
+             && data.senderName is string && data.senderName.size() <= 100
+             && data.giftName is string && data.giftName.size() <= 100
+             && data.coinValue is int
+             && data.isForCreatorA is bool
+             && data.timestamp is string && data.timestamp.size() <= 100;
+    }
+
+    // Wallet validation blueprint
+    function isValidWallet(data) {
+      return data.keys().hasAll(['id', 'userId', 'coinsBalance', 'earningsBRL'])
+             && data.id is string && isValidId(data.id)
+             && data.userId is string && isValidId(data.userId)
+             && data.coinsBalance is int
+             && (data.earningsBRL is int || data.earningsBRL is float || data.earningsBRL is number);
+    }
+
+    // Transaction validation blueprint
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['id', 'userId', 'type', 'coinsAmount', 'timestamp'])
+             && data.id is string && isValidId(data.id)
+             && data.userId is string && isValidId(data.userId)
+             && (data.type == 'purchase_coins' || data.type == 'debit_gift' || data.type == 'withdrawal')
+             && data.coinsAmount is int
+             && data.timestamp is string && data.timestamp.size() <= 100;
+    }
+
+    // Mission validation blueprint
+    function isValidMission(data) {
+      return data.keys().hasAll(['id', 'userId', 'title', 'xpReward', 'status', 'progress'])
+             && data.id is string && isValidId(data.id)
+             && data.userId is string && isValidId(data.userId)
+             && data.title is string && data.title.size() <= 200
+             && data.xpReward is int
+             && (data.status == 'pending' || data.status == 'in_progress' || data.status == 'completed')
+             && data.progress is int;
+    }
+
+    // AuditLog validation blueprint
+    function isValidAuditLog(data) {
+      return data.keys().hasAll(['id', 'type', 'details', 'timestamp'])
+             && data.id is string && isValidId(data.id)
+             && (data.type == 'moderator_action' || data.type == 'report' || data.type == 'ban_user' || data.type == 'pause_gifts' || data.type == 'close_room')
+             && data.details is string && data.details.size() <= 1000
+             && data.timestamp is string && data.timestamp.size() <= 100;
+    }
+
+    // --- COLLECTION RULES MATCHERS ---
+
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isOwner(userId) && isValidUser(incoming());
+      allow update: if isSignedIn() && isOwner(userId) && isValidUser(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'avatar', 'role', 'email'])
+      );
+      allow delete: if false;
+    }
+
+    match /creators/{creatorId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isOwner(creatorId) && isValidCreator(incoming());
+      allow update: if isSignedIn() && isValidCreator(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasAny(['isOnline', 'points', 'liveTitle', 'youtubeVideoId', 'viewers'])
+      );
+      allow delete: if false;
+    }
+
+    match /pkRooms/{roomId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidPKRoom(incoming());
+      allow update: if isSignedIn() && isValidPKRoom(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasAny(['scoreA', 'scoreB', 'timer', 'status', 'viewers', 'gifts', 'chatMessages', 'ranking', 'liveA', 'liveB'])
+      );
+      allow delete: if false;
+    }
+
+    match /chatMessages/{messageId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidChatMessage(incoming());
+      allow update: if false;
+      allow delete: if isSignedIn(); // Admins and moderators can delete messages
+    }
+
+    match /gifts/{giftId} {
+      allow read: if true;
+      allow write: if false; // Configured offline or via admin
+    }
+
+    match /giftEvents/{eventId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidGiftEvent(incoming());
+      allow update, delete: if false;
+    }
+
+    match /wallets/{walletId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isOwner(incoming().userId) && isValidWallet(incoming());
+      allow update: if isSignedIn() && isOwner(existing().userId) && isValidWallet(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['coinsBalance', 'earningsBRL'])
+      );
+      allow delete: if false;
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isOwner(incoming().userId) && isValidTransaction(incoming());
+      allow update, delete: if false;
+    }
+
+    match /missions/{userMissionId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isOwner(incoming().userId) && isValidMission(incoming());
+      allow update: if isSignedIn() && isOwner(existing().userId) && isValidMission(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['progress', 'status'])
+      );
+      allow delete: if false;
+    }
+
+    match /auditLogs/{logId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidAuditLog(incoming());
+      allow update, delete: if false;
+    }
+  }
+}

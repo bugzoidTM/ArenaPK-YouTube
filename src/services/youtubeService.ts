@@ -12,13 +12,60 @@ export interface SimulatedLiveBroadcast {
   watchUrl: string;
 }
 
+export interface YouTubeChannelInfo {
+  id: string;
+  title: string;
+  customUrl: string;
+  thumbnailsUrl: string;
+  subscriberCount: number;
+}
+
+export interface YouTubeConnectionStatus {
+  isConnected: boolean;
+  status: 'idle' | 'authorizing' | 'connected' | 'error' | 'missing_permissions';
+  channelInfo?: YouTubeChannelInfo;
+  errorMessage?: string;
+}
+
 /**
- * Interface que define o contrato do serviço da API do YouTube Live Streaming.
+ * DOCUMENTAÇÃO DOS ENDPOINTS BACKEND NECESSÁRIOS:
+ * 
+ * 1. GET /auth/youtube/start
+ *    - Inicia o fluxo de consentimento OAuth do Google.
+ *    - Redireciona o usuário para a URL de Autorização do Google contendo os seguintes escopos:
+ *      - https://www.googleapis.com/auth/youtube.readonly
+ *      - https://www.googleapis.com/auth/youtube.force-ssl
+ *    - Deve usar os parâmetros: response_type=code, access_type=offline (para Refresh Token), prompt=consent.
+ * 
+ * 2. GET /auth/youtube/callback
+ *    - Ponto de retorno definido no Google Cloud Console.
+ *    - Recebe o parâmetro ?code= na query da URL.
+ *    - Troca o código temporário por Access Token e Refresh Token no backend.
+ *    - Salva o Refresh Token de forma segura e injeta um Cookie HttpOnly cifrado no navegador do cliente de forma que chaves sensíveis e segredos nunca fiquem expostos no frontend.
+ * 
+ * 3. POST /auth/youtube/disconnect
+ *    - Limpa os Cookies/Sessão do usuário.
+ *    - Revoga o token de acesso acessando as APIs do Google OAuth Revocation.
+ * 
+ * 4. GET /youtube/status
+ *    - Retorna as informações do canal conectado no formato `YouTubeConnectionStatus`.
+ *    - Executa consulta na API 'youtube.channels.list' utilizando o Access Token armazenado na sessão.
+ * 
+ * 5. POST /youtube/live/create
+ *    - Valida se o usuário tem o escopo 'youtube.force-ssl'.
+ *    - Agenda e cria via YouTube API 'liveBroadcasts.insert' e 'liveStreams.insert'.
+ * 
+ * 6. POST /youtube/live/end
+ *    - Executa a finalização da transmissão ativa definindo o status de transmissão para 'complete' via 'liveBroadcasts.transition'.
+ * 
+ * CRITICAL SECURITY NOTE:
+ * O client_id, client_secret e refresh_token NUNCA devem ser trafegados ou gravados no client-side/Vite bundle, operando puramente por trás de proxies HTTP-Only seguros.
  */
+
 export interface IYouTubeService {
-  /**
-   * Agenda e cria uma nova transmissão ao vivo e chave de stream no YouTube.
-   */
+  startYouTubeOAuth(simulateScopeIssue?: boolean, simulateErrorIssue?: boolean): Promise<void>;
+  getYouTubeConnectionStatus(): Promise<YouTubeConnectionStatus>;
+  disconnectYouTube(): Promise<void>;
   createLiveBroadcast(payload: {
     title: string;
     description: string;
@@ -28,25 +75,81 @@ export interface IYouTubeService {
     allowGifts: boolean;
     allowChat: boolean;
   }): Promise<SimulatedLiveBroadcast>;
-
-  /**
-   * Envia evento para sinalizar o fim de uma transmissão na plataforma externa.
-   */
   endLiveBroadcast(broadcastId: string): Promise<boolean>;
 }
 
-/**
- * Serviço de transmissão ao vivo do YouTube com simulador de atraso de rede (RTT).
- * 
- * COMUTADOR FUTURO DE PRODUÇÃO:
- * - O frontend fará requisições autenticadas seguras a um backend Node.js que
- *   processa as credenciais e tokens OAuth salvos em cookies HttpOnly de forma oculta do navegador:
- *   - `createLiveBroadcast` -> `POST /api/youtube/live/create`
- *   - `endLiveBroadcast` -> `POST /api/youtube/live/end`
- * - No MVP real web, a transmissão pode exigir um media gateway para receber WebRTC e enviar RTMP ao YouTube,
- *   ou ferramenta externa (como OBS) enviando diretamente com base nos dados obtidos pelo endpoint de criação.
- */
 class YouTubeService implements IYouTubeService {
+  private STORAGE_KEY = 'arenapk_youtube_connection_ref';
+
+  /**
+   * Dispara o fluxo OAuth. Como estamos no ambiente sandbox frontend,
+   * simulamos cenários de sucesso, erro de autorização ou escopo/permissão pendente.
+   */
+  public async startYouTubeOAuth(simulateScopeIssue = false, simulateErrorIssue = false): Promise<void> {
+    console.log('[YouTubeService] startYouTubeOAuth disparado. Encaminhando para simulação de consentimento...');
+    await new Promise((resolve) => setTimeout(resolve, 800));
+
+    if (simulateErrorIssue) {
+      const state: YouTubeConnectionStatus = {
+        isConnected: false,
+        status: 'error',
+        errorMessage: 'Acesso negado: O usuário revogou o consentimento ou credenciais expiraram (G-403 OAuth Error).'
+      };
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(state));
+      return;
+    }
+
+    if (simulateScopeIssue) {
+      const state: YouTubeConnectionStatus = {
+        isConnected: false,
+        status: 'missing_permissions',
+        errorMessage: 'Faltando escopo "youtube.force-ssl": ArenaPK precisa de permissões de transmissão para agendar eventos ao vivo em seu nome.'
+      };
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(state));
+      return;
+    }
+
+    // Sucesso por padrão
+    const state: YouTubeConnectionStatus = {
+      isConnected: true,
+      status: 'connected',
+      channelInfo: {
+        id: 'UC_youtube_channel_pk_101',
+        title: 'Arena Streamer Oficial',
+        customUrl: '@arenastreamer',
+        thumbnailsUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=120',
+        subscriberCount: 245000
+      }
+    };
+    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(state));
+  }
+
+  /**
+   * Retorna os dados síncronos do canal conectado armazenados localmente
+   */
+  public async getYouTubeConnectionStatus(): Promise<YouTubeConnectionStatus> {
+    const raw = localStorage.getItem(this.STORAGE_KEY);
+    if (!raw) {
+      return {
+        isConnected: false,
+        status: 'idle'
+      };
+    }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return { isConnected: false, status: 'idle' };
+    }
+  }
+
+  /**
+   * Remove a conexão e limpa cache/storage síncrono
+   */
+  public async disconnectYouTube(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    localStorage.removeItem(this.STORAGE_KEY);
+  }
+
   public async createLiveBroadcast(payload: {
     title: string;
     description: string;
@@ -56,18 +159,14 @@ class YouTubeService implements IYouTubeService {
     allowGifts: boolean;
     allowChat: boolean;
   }): Promise<SimulatedLiveBroadcast> {
-    // FUTURO ENDPOINT REAL: POST /api/youtube/live/create
-    // O backend utiliza a biblioteca oficial do Google API para reservar o broadcast e o stream.
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
-    // Recursos de Vídeo Pré-selecionados para o Player Mockado Interativo do YouTube
     const presetVideoIds = [
       'ScMzIvxBSi4', // Cazá React
       'U8C6EsuM_Gg', // CS2 Major
       'S_C4h7zN-7g', // FreeFire Highlights
       'm79Hh_f0R7o'  // Coringa GTA
     ];
-    // Escolher um ID semi-aleatório baseado no título ou simplesmente um randômico elegante
     const randomIndex = Math.floor(Math.random() * presetVideoIds.length);
     const selectedVideoId = presetVideoIds[randomIndex];
 
@@ -84,8 +183,6 @@ class YouTubeService implements IYouTubeService {
   }
 
   public async endLiveBroadcast(broadcastId: string): Promise<boolean> {
-    // FUTURO ENDPOINT REAL: POST /api/youtube/live/end
-    // Altera o status da live externa de "active" para "complete".
     await new Promise((resolve) => setTimeout(resolve, 500));
     console.log(`[YouTubeService] Live ID ${broadcastId} encerrada.`);
     return true;

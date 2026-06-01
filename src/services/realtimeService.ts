@@ -4,6 +4,11 @@
  */
 
 import { ChatMessage, Creator } from '../types';
+import { db, handleFirestoreError, OperationType } from './firebase';
+import { 
+  doc, onSnapshot, setDoc, updateDoc, collection, query, where, 
+  orderBy, limit, increment, runTransaction 
+} from 'firebase/firestore';
 
 // Standard TypeScript enum for Realtime PK Studio events as required by guidelines
 export enum PKEvent {
@@ -75,71 +80,32 @@ type EventCallback<T extends PKEvent> = (payload: RealtimeEventPayloads[T]) => v
  * Interface que define o contrato do serviço robusto de Comunicação em Tempo Real.
  */
 export interface IRealtimeService {
-  /**
-   * Conecta o cliente ao canal WebSocket do servidor.
-   */
   connect(): Promise<boolean>;
-
-  /**
-   * Encerra a conexão WebSocket.
-   */
   disconnect(): void;
-
-  /**
-   * Verifica se o WebSocket se encontra ativo.
-   */
   isConnected(): boolean;
-
-  /**
-   * Inscreve o usuário em uma sala/arena PK específica.
-   */
   joinRoom(roomId: string): void;
-
-  /**
-   * Abandona a sala de transmissão conectada.
-   */
   leaveRoom(): void;
-
-  /**
-   * Registra um receptor de novos eventos em tempo real vindos do servidor.
-   */
   on<T extends PKEvent>(event: T, callback: EventCallback<T>): void;
-
-  /**
-   * Desinscreve o receptor para evitar vazamento de memória.
-   */
   off<T extends PKEvent>(event: T, callback: EventCallback<T>): void;
-
-  /**
-   * Transmite um evento local que será retransmitido pelo gateway a outros clientes.
-   */
   sendEvent<T extends PKEvent>(event: T, payload: RealtimeEventPayloads[T]): void;
-
-  /**
-   * Verifica se um usuário está localmente com moderação ativa de silenciamento.
-   */
   isUserMuted(username: string): boolean;
-
-  /**
-   * Silencia temporariamente um usuário na sessão.
-   */
   muteUserInCache(username: string, mute: boolean): void;
 }
 
 /**
- * Serviço WebSocket Mockado para simulação de interações e pontuações do duelo PK.
- * 
- * COMUTADOR FUTURO DE PRODUÇÃO:
- * - O frontend conectará de forma real via protocolo seguro do WebSocket (`wss://`):
- *   - `connect` -> instancia do objeto `new WebSocket('wss://api.arenapk.com/rooms/' + roomId + '?token=' + token)`
- *   - `sendEvent` -> chamará `socket.send(JSON.stringify({ event, payload }))`
- *   - `on` e `off` -> mapeia ouvintes de mensagens nativos `socket.onmessage`.
+ * Serviço de Comunicação em Tempo Real sincronizado nativamente com o Firebase Firestore,
+ * contendo redundância automática e simuladores para garantir máxima fidelidade.
  */
 class RealtimeService implements IRealtimeService {
   private socketConnected: boolean = false;
   private currentRoomId: string | null = null;
   private listeners: { [key in PKEvent]?: Array<(payload: any) => void> } = {};
   private activeRoomSimulationInterval: any = null;
+  
+  // Observadores ativos do Firestore
+  private roomUnsubscribe: (() => void) | null = null;
+  private chatUnsubscribe: (() => void) | null = null;
+  private giftsUnsubscribe: (() => void) | null = null;
 
   // Track muted users list in local memory to simulate moderation block list
   private mutedUsers: Set<string> = new Set();
@@ -151,43 +117,155 @@ class RealtimeService implements IRealtimeService {
   public async connect(): Promise<boolean> {
     if (this.socketConnected) return true;
     
-    // Simulate real networking handshake latency
     return new Promise((resolve) => {
       setTimeout(() => {
         this.socketConnected = true;
-        console.log('[RealtimeService] WebSocket Connection Established. Protocol: secure-ws://arenapk.api/realtime');
+        console.log('[RealtimeService] Conectado ao Firebase Realtime Influx.');
         resolve(true);
-      }, 400);
+      }, 300);
     });
   }
 
   public disconnect() {
     this.socketConnected = false;
     this.stopRoomSimulation();
+    this.unsubscribeAll();
     this.listeners = {};
-    console.log('[RealtimeService] WebSocket Connection Terminated.');
+    console.log('[RealtimeService] Desconectado da transmissão global.');
   }
 
   public isConnected(): boolean {
     return this.socketConnected;
   }
 
+  private unsubscribeAll() {
+    if (this.roomUnsubscribe) {
+      this.roomUnsubscribe();
+      this.roomUnsubscribe = null;
+    }
+    if (this.chatUnsubscribe) {
+      this.chatUnsubscribe();
+      this.chatUnsubscribe = null;
+    }
+    if (this.giftsUnsubscribe) {
+      this.giftsUnsubscribe();
+      this.giftsUnsubscribe = null;
+    }
+  }
+
   public joinRoom(roomId: string) {
     if (!this.socketConnected) {
-      console.warn('[RealtimeService] Cannot join room while socket is offline. Connecting automatically...');
       this.connect();
     }
     
     this.currentRoomId = roomId;
-    console.log(`[RealtimeService] Joined room: ${roomId}`);
+    this.unsubscribeAll();
 
-    // Trigger initial simulation cycle to show realistic multi-user interactivity
+    console.log(`[RealtimeService] Conectando sala do Firestore: ${roomId}`);
+
+    // --- 1. Sincronismo do Placar, Status e Cronômetro via Firestore ---
+    try {
+      const roomRef = doc(db, 'pkRooms', roomId);
+      this.roomUnsubscribe = onSnapshot(roomRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const roomData = snapshot.data();
+          
+          // Dispara alteração do Placar
+          this.triggerLocalEvent(PKEvent.SCORE_UPDATED, {
+            scoreA: roomData.scoreA !== undefined ? roomData.scoreA : 0,
+            scoreB: roomData.scoreB !== undefined ? roomData.scoreB : 0,
+          });
+
+          // Dispara Cronômetro
+          this.triggerLocalEvent(PKEvent.TIMER_UPDATED, {
+            timer: roomData.timer !== undefined ? roomData.timer : 300
+          });
+
+          // Dispara Fim de Sala se findado
+          if (roomData.status === 'finished' || roomData.status === 'closed') {
+            const winnerId = roomData.scoreA >= roomData.scoreB ? roomData.creatorA?.id : roomData.creatorB?.id;
+            this.triggerLocalEvent(PKEvent.ROOM_ENDED, {
+              roomId: roomId,
+              winnerId: winnerId
+            });
+          }
+        }
+      }, (error) => {
+        handleFirestoreError(error, OperationType.GET, `pkRooms/${roomId}`);
+      });
+    } catch (err) {
+      console.warn('[RealtimeService] Firestore room sync indisponível, operando offline:', err);
+    }
+
+    // --- 2. Sincronismo do Chat Próprio via Firestore ---
+    try {
+      const chatQuery = query(
+        collection(db, 'pkRooms', roomId, 'chatMessages'),
+        orderBy('timestamp', 'asc'),
+        limit(50)
+      );
+
+      this.chatUnsubscribe = onSnapshot(chatQuery, (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'added') {
+            const data = change.doc.data();
+            const message: ChatMessage = {
+              id: data.id,
+              senderName: data.senderName,
+              senderAvatar: data.senderAvatar,
+              role: data.role,
+              text: data.text,
+              timestamp: data.timestamp
+            };
+            this.triggerLocalEvent(PKEvent.CHAT_MESSAGE, { message });
+          }
+        });
+      }, (error) => {
+        handleFirestoreError(error, OperationType.GET, 'chatMessages');
+      });
+    } catch (err) {
+      console.warn('[RealtimeService] Firestore chat sync indisponível, operando offline:', err);
+    }
+
+    // --- 3. Sincronismo do Feed de Presentes via Firestore ---
+    try {
+      const giftQuery = query(
+        collection(db, 'pkRooms', roomId, 'giftEvents'),
+        orderBy('timestamp', 'asc')
+      );
+
+      this.giftsUnsubscribe = onSnapshot(giftQuery, (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'added') {
+            const data = change.doc.data();
+            if (data.senderName !== 'Você (Super Doador)' && data.senderName !== 'Você (Moderador)') {
+              this.triggerLocalEvent(PKEvent.GIFT_SENT, {
+                senderName: data.senderName,
+                senderAvatar: data.senderAvatar || '',
+                giftName: data.giftName,
+                giftIcon: data.giftIcon,
+                coinValue: data.coinValue,
+                pkPointsBonus: data.pkPointsBonus,
+                isForCreatorA: data.isForCreatorA
+              });
+            }
+          }
+        });
+      }, (error) => {
+        handleFirestoreError(error, OperationType.GET, 'giftEvents');
+      });
+    } catch (err) {
+      console.warn('[RealtimeService] Firestore giftEvents sync indisponível, operando offline:', err);
+    }
+
+    // Ativa simulação incremental em background para dar interatividade adicional
     this.startRoomSimulation(roomId);
   }
 
   public leaveRoom() {
-    console.log(`[RealtimeService] Left room: ${this.currentRoomId}`);
+    console.log(`[RealtimeService] Deixando a sala: ${this.currentRoomId}`);
     this.currentRoomId = null;
+    this.unsubscribeAll();
     this.stopRoomSimulation();
   }
 
@@ -203,22 +281,67 @@ class RealtimeService implements IRealtimeService {
     this.listeners[event] = this.listeners[event]?.filter(cb => cb !== callback);
   }
 
-  public sendEvent<T extends PKEvent>(event: T, payload: RealtimeEventPayloads[T]) {
+  public async sendEvent<T extends PKEvent>(event: T, payload: RealtimeEventPayloads[T]) {
     if (!this.socketConnected) {
-      console.error('[RealtimeService] Cannot send payload. Socket state: offline.');
+      console.error('[RealtimeService] Sem conexão de soquete ativa.');
       return;
     }
 
-    console.log(`[RealtimeService] OUTGOING [${event}]:`, payload);
-
-    // Forward immediately to local listeners (simulating our own echo broadcast from server)
+    // Primeiro repassa localmente
     this.triggerLocalEvent(event, payload);
 
-    // If it's a message, sometimes let simulated opponent or background user react
-    if (event === PKEvent.CHAT_MESSAGE) {
-      const chatPayload = payload as RealtimeEventPayloads[PKEvent.CHAT_MESSAGE];
-      if (!chatPayload.isSystem) {
-        this.simulateQuickInteractions(chatPayload.message);
+    // Se houver sala ativa, sincroniza de forma real no Firestore
+    if (this.currentRoomId) {
+      const currentRoomId = this.currentRoomId;
+      if (event === PKEvent.CHAT_MESSAGE) {
+        const chatPayload = payload as RealtimeEventPayloads[PKEvent.CHAT_MESSAGE];
+        try {
+          const msgRef = doc(db, 'pkRooms', currentRoomId, 'chatMessages', chatPayload.message.id);
+          await setDoc(msgRef, {
+            id: chatPayload.message.id,
+            senderName: chatPayload.message.senderName,
+            senderAvatar: chatPayload.message.senderAvatar || '',
+            role: chatPayload.message.role || 'viewer',
+            text: chatPayload.message.text,
+            roomId: currentRoomId,
+            timestamp: chatPayload.message.timestamp || new Date().toISOString()
+          });
+        } catch (dbErr) {
+          console.warn('[RealtimeService] Falha ao sincronizar chat no Firestore:', dbErr);
+        }
+
+        if (!chatPayload.isSystem) {
+          this.simulateQuickInteractions(chatPayload.message);
+        }
+
+      } else if (event === PKEvent.GIFT_SENT) {
+        const giftPayload = payload as RealtimeEventPayloads[PKEvent.GIFT_SENT];
+        const eventId = `gift-event-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+        try {
+          // 1. Registra evento de mimo recebido no sub-collection
+          await setDoc(doc(db, 'pkRooms', currentRoomId, 'giftEvents', eventId), {
+            id: eventId,
+            roomId: currentRoomId,
+            senderName: giftPayload.senderName,
+            senderAvatar: giftPayload.senderAvatar,
+            giftName: giftPayload.giftName,
+            giftIcon: giftPayload.giftIcon,
+            coinValue: giftPayload.coinValue,
+            pkPointsBonus: giftPayload.pkPointsBonus,
+            isForCreatorA: giftPayload.isForCreatorA,
+            timestamp: new Date().toISOString()
+          });
+
+          // 2. Transação atômica ou incremento do placar na arena
+          const roomRef = doc(db, 'pkRooms', currentRoomId);
+          await updateDoc(roomRef, {
+            scoreA: giftPayload.isForCreatorA ? increment(giftPayload.pkPointsBonus) : increment(0),
+            scoreB: !giftPayload.isForCreatorA ? increment(giftPayload.pkPointsBonus) : increment(0)
+          });
+        } catch (dbErr) {
+          console.warn('[RealtimeService] Falha ao sincronizar presente no Firestore:', dbErr);
+        }
       }
     }
   }
@@ -230,7 +353,7 @@ class RealtimeService implements IRealtimeService {
         try {
           callback(payload);
         } catch (err) {
-          console.error(`[RealtimeService] Error executing listener for event [${event}]:`, err);
+          console.error(`[RealtimeService] Erro ao disparar ouvinte [${event}]:`, err);
         }
       });
     }
@@ -251,7 +374,6 @@ class RealtimeService implements IRealtimeService {
   private startRoomSimulation(roomId: string) {
     this.stopRoomSimulation();
 
-    // Trigger USER_JOINED immediately for realism
     setTimeout(() => {
       this.triggerLocalEvent(PKEvent.USER_JOINED, {
         userId: 'sim-user-100',
@@ -261,12 +383,11 @@ class RealtimeService implements IRealtimeService {
       });
     }, 1500);
 
-    const simulationIntervalTime = 5500; // Generate events every 5.5s
+    const simulationIntervalTime = 7000; // Gera mimos/msges adicionais a cada 7s
     this.activeRoomSimulationInterval = setInterval(() => {
       const dice = Math.random();
 
       if (dice < 0.4) {
-        // Option A: Simulated chat message
         const userPool: { name: string; avatar: string; role: 'viewer' | 'sponsor' | 'moderator' }[] = [
           { name: 'KratosGamer_9', avatar: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=100', role: 'viewer' },
           { name: 'Alice_Sponsor2026', avatar: 'https://images.unsplash.com/photo-1511253819057-040294e07e66?w=100', role: 'sponsor' },
@@ -275,16 +396,13 @@ class RealtimeService implements IRealtimeService {
         ];
 
         const selectedUser = userPool[Math.floor(Math.random() * userPool.length)];
-
-        // Skip chat if user is muted
         if (this.isUserMuted(selectedUser.name)) return;
 
         const phrases = [
           'Vamo nessa galera, os presentes dão bônus x2 agora!',
           'Que delay bizarro nas câmeras de vocês, muta aí!',
-          'Caramba, esse PK é o maior do mês com certeza kkkk',
+          'Caramba, esse PK é o maior do ano com certeza!',
           'Enviando um mimo para balancear o placar! 🔥',
-          'Como funciona essa regra da punição do perdedor?',
           'Vamo virar esse placar, time RED!',
           'O time BLUE tá mandando muito Foguete 🚀🚀',
           'Alguém me dá moderação por favor!'
@@ -301,8 +419,7 @@ class RealtimeService implements IRealtimeService {
 
         this.triggerLocalEvent(PKEvent.CHAT_MESSAGE, { message: chatMsg });
 
-      } else if (dice < 0.7) {
-        // Option B: Simulated Gift sent from a sponsor view
+      } else if (dice < 0.65) {
         const sponsorNames = ['ArthurGold', 'Carol_Patrocínio', 'GaulesArmy_1', 'CasimiroFãN1'];
         const gifts = [
           { name: 'Fogo Sagrado', icon: '🔥', coin: 50, points: 550 },
@@ -312,9 +429,8 @@ class RealtimeService implements IRealtimeService {
 
         const randomSponsor = sponsorNames[Math.floor(Math.random() * sponsorNames.length)];
         const randomGift = gifts[Math.floor(Math.random() * gifts.length)];
-        const isForA = Math.random() > 0.45; // favor RED slightly for visual joy
+        const isForA = Math.random() > 0.45;
 
-        // Simulate Gift Sent Packet
         this.triggerLocalEvent(PKEvent.GIFT_SENT, {
           senderName: randomSponsor,
           senderAvatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=100',
@@ -325,8 +441,7 @@ class RealtimeService implements IRealtimeService {
           isForCreatorA: isForA
         });
 
-      } else if (dice < 0.8) {
-        // Option C: User join/leave
+      } else if (dice < 0.75) {
         const namesJoin = ['GamerPro_Rio', 'FernandaStreamer', 'CrisFutebol', 'Toby_CSGO'];
         const randomName = namesJoin[Math.floor(Math.random() * namesJoin.length)];
         
@@ -337,14 +452,8 @@ class RealtimeService implements IRealtimeService {
             avatar: 'https://images.unsplash.com/photo-1628157582853-a796fa650a6a?w=100',
             role: 'viewer'
           });
-        } else {
-          this.triggerLocalEvent(PKEvent.USER_LEFT, {
-            userId: `usr-${Date.now() - 50000}`,
-            username: randomName
-          });
         }
       }
-
     }, simulationIntervalTime);
   }
 
@@ -357,7 +466,7 @@ class RealtimeService implements IRealtimeService {
 
   private simulateQuickInteractions(userMsg: ChatMessage) {
     setTimeout(() => {
-      if (Math.random() > 0.6) {
+      if (Math.random() > 0.65) {
         const reactions = [
           'Brabo demais o host falando!',
           'Concordo 100%!',
@@ -376,7 +485,7 @@ class RealtimeService implements IRealtimeService {
 
         this.triggerLocalEvent(PKEvent.CHAT_MESSAGE, { message: chatReact });
       }
-    }, 1800);
+    }, 2000);
   }
 }
 

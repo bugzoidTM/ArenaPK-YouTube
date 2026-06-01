@@ -3,8 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Creator, PKRoom, PKInvite, PKBattle } from '../types';
-import { INITIAL_CREATORS, INITIAL_INVITES } from './pkService';
+import { Creator, PKRoom, PKInvite } from '../types';
+import { INITIAL_CREATORS } from '../mocks/pkService';
+import { db, handleFirestoreError, OperationType } from './firebase';
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs } from 'firebase/firestore';
 
 /**
  * Interface que define o contrato do serviço de Salas e Desafios PK.
@@ -42,15 +44,7 @@ export interface IPKRoomService {
 }
 
 /**
- * Serviço de salas PK com simulador de banco de dados baseado em LocalStorage.
- * 
- * COMUTADOR FUTURO DE PRODUÇÃO:
- * - Substituir operações mock por chamadas aos endpoints REST e WebSockets do backend:
- *   - `getRoomById` -> `GET /api/pk/rooms/:roomId`
- *   - `createRoom` -> `POST /api/pk/rooms`
- *   - `sendInvite` -> `POST /api/pk/rooms/:roomId/invite`
- *   - `acceptInvite` -> `POST /api/pk/rooms/:roomId/accept`
- *   - `endRoom` -> `POST /api/pk/rooms/:roomId/end`
+ * Serviço de salas PK integrado com persistência no Firebase Firestore e redundância local.
  */
 class PKRoomService implements IPKRoomService {
   private STORAGE_KEY_CREATORS = 'arenapk_creators_list';
@@ -60,35 +54,113 @@ class PKRoomService implements IPKRoomService {
     this.initializeStorage();
   }
 
-  private initializeStorage() {
+  private async initializeStorage() {
     if (localStorage.getItem(this.STORAGE_KEY_CREATORS) === null) {
       localStorage.setItem(this.STORAGE_KEY_CREATORS, JSON.stringify(INITIAL_CREATORS));
+    }
+
+    // Inicializa criadores de demonstração no Firestore em background (se não existirem)
+    try {
+      for (const creator of INITIAL_CREATORS) {
+        const creatorRef = doc(db, 'creators', creator.id);
+        const snap = await getDoc(creatorRef);
+        if (!snap.exists()) {
+          const cAny = creator as any;
+          await setDoc(creatorRef, {
+            id: creator.id,
+            name: creator.name,
+            channelName: creator.channelName,
+            avatar: creator.avatar,
+            banner: cAny.banner || 'images/default-banner.jpg',
+            category: cAny.category || 'Competitivo',
+            viewers: cAny.viewers || 1000,
+            liveTitle: creator.liveTitle || 'Transmissão Oficial',
+            youtubeVideoId: creator.youtubeVideoId || 'ScMzIvxBSi4',
+            isOnline: creator.isLive || false,
+            points: creator.currentPkPoints || 0
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('[PKRoomService] Falha ao sincronizar catálogo inicial de creators no Firestore:', err);
     }
   }
 
   public async listCreators(): Promise<Creator[]> {
     this.initializeStorage();
+    
+    // Tenta carregar do Firestore primeiro
+    try {
+      const creatorsCol = collection(db, 'creators');
+      const snap = await getDocs(creatorsCol);
+      if (!snap.empty) {
+        const list: Creator[] = [];
+        snap.forEach((docSnap) => {
+          const d = docSnap.data();
+          list.push({
+            id: d.id,
+            name: d.name,
+            avatar: d.avatar,
+            channelName: d.channelName,
+            subscribers: d.viewers ? d.viewers * 10 : 154000,
+            isLive: d.isOnline,
+            liveTitle: d.liveTitle,
+            youtubeVideoId: d.youtubeVideoId,
+            currentPkPoints: d.points
+          });
+        });
+        localStorage.setItem(this.STORAGE_KEY_CREATORS, JSON.stringify(list));
+        return list;
+      }
+    } catch (err) {
+      console.warn('[PKRoomService] Falha ao carregar creators do Firestore, usando backup...', err);
+    }
+
     const raw = localStorage.getItem(this.STORAGE_KEY_CREATORS);
     return raw ? JSON.parse(raw) : INITIAL_CREATORS;
   }
 
   public async getRoomById(roomId: string): Promise<PKRoom | null> {
-    // FUTURO ENDPOINT REAL: GET /api/pk/rooms/:roomId
-    // O backend lerá o estado consolidado em cache Redis do placar do duelo.
+    // Tenta carregar do Firestore
+    try {
+      const roomRef = doc(db, 'pkRooms', roomId);
+      const snap = await getDoc(roomRef);
+      if (snap.exists()) {
+        const d = snap.data();
+        return {
+          roomId: d.roomId,
+          creatorA: d.creatorA,
+          creatorB: d.creatorB,
+          liveA: d.liveA,
+          liveB: d.liveB,
+          scoreA: d.scoreA,
+          scoreB: d.scoreB,
+          timer: d.timer,
+          status: d.status,
+          viewers: d.viewers,
+          gifts: d.gifts || [],
+          chatMessages: d.chatMessages || [],
+          ranking: d.ranking || []
+        } as PKRoom;
+      }
+    } catch (err) {
+      console.warn('[PKRoomService] Falha ao carregar sala do Firestore, tentando local:', err);
+    }
+
     const rooms = this.getActiveRooms();
     const room = rooms.find((r) => r.roomId === roomId);
     return room || null;
   }
 
   public async createRoom(creatorId: string): Promise<PKRoom> {
-    // FUTURO ENDPOINT REAL: POST /api/pk/rooms
-    // Cria um registro de transmissão e associa a stream key ao criador de forma isolada.
     const creators = await this.listCreators();
     const creatorA = creators.find((c) => c.id === creatorId) || creators[0];
     const creatorB = creators.find((c) => c.id !== creatorId) || creators[1];
 
+    const roomId = `room-${Date.now()}`;
+
     const newRoom: PKRoom = {
-      roomId: `room-${Date.now()}`,
+      roomId: roomId,
       creatorA: {
         ...creatorA,
         youtubeVideoId: creatorA.youtubeVideoId || 'ScMzIvxBSi4'
@@ -99,31 +171,44 @@ class PKRoomService implements IPKRoomService {
       },
       liveA: {
         videoId: creatorA.youtubeVideoId || 'ScMzIvxBSi4',
-        title: creatorA.liveTitle || 'Live Casimiro',
-        embedUrl: `https://www.youtube.com/embed/${creatorA.youtubeVideoId || 'ScMzIvxBSi4'}?autoplay=1&mute=1`,
+        title: creatorA.liveTitle || `Live de @${creatorA.channelName}`,
+        embedUrl: `https://www.youtube.com/embed/${creatorA.youtubeVideoId || 'ScMzIvxBSi4'}`,
         watchUrl: `https://www.youtube.com/watch?v=${creatorA.youtubeVideoId || 'ScMzIvxBSi4'}`,
         status: 'live'
       },
       liveB: {
         videoId: creatorB.youtubeVideoId || 'U8C6EsuM_Gg',
-        title: creatorB.liveTitle || 'Live Gaules',
-        embedUrl: `https://www.youtube.com/embed/${creatorB.youtubeVideoId || 'U8C6EsuM_Gg'}?autoplay=1&mute=1`,
+        title: creatorB.liveTitle || `Live de @${creatorB.channelName}`,
+        embedUrl: `https://www.youtube.com/embed/${creatorB.youtubeVideoId || 'U8C6EsuM_Gg'}`,
         watchUrl: `https://www.youtube.com/watch?v=${creatorB.youtubeVideoId || 'U8C6EsuM_Gg'}`,
         status: 'live'
       },
-      scoreA: 1500,
-      scoreB: 1200,
+      scoreA: 0,
+      scoreB: 0,
       timer: 300,
       status: 'active',
-      viewers: 4500,
+      viewers: 1500 + Math.floor(Math.random() * 5000),
       gifts: [],
       chatMessages: [],
       ranking: [
-        { creatorId: creatorA.id, points: 1500, rank: 1 },
-        { creatorId: creatorB.id, points: 1200, rank: 2 }
+        { creatorId: creatorA.id, points: 0, rank: 1 },
+        { creatorId: creatorB.id, points: 0, rank: 2 }
       ]
     };
 
+    // 1. Persiste no Firestore
+    try {
+      const roomRef = doc(db, 'pkRooms', roomId);
+      await setDoc(roomRef, {
+        ...newRoom,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `pkRooms/${roomId}`);
+    }
+
+    // 2. Backup LocalStorage
     const rooms = this.getActiveRooms();
     rooms.push(newRoom);
     this.saveActiveRooms(rooms);
@@ -132,8 +217,6 @@ class PKRoomService implements IPKRoomService {
   }
 
   public async sendInvite(roomId: string, targetCreatorId: string, stake: string, minutes: number): Promise<PKInvite> {
-    // FUTURO ENDPOINT REAL: POST /api/pk/rooms/:roomId/invite
-    // Dispara notificação WebSocket instantânea para a dashboard do criador-alvo.
     const creators = await this.listCreators();
     const target = creators.find((c) => c.id === targetCreatorId) || creators[2];
     const challenger = creators[0];
@@ -147,22 +230,27 @@ class PKRoomService implements IPKRoomService {
       status: 'pending'
     };
 
-    console.log(`[PKRoomService] Convite de desafio enviado para @${target.channelName}. Prenda: "${stake}"`);
+    console.log(`[PKRoomService] Convite enviado para @${target.channelName}. Prenda: "${stake}"`);
     return invite;
   }
 
   public async acceptInvite(inviteId: string): Promise<PKRoom> {
-    // FUTURO ENDPOINT REAL: POST /api/pk/rooms/:roomId/accept
-    // Altera o estado do circuito de batalha no servidor, abrindo as duas conexões de vídeo.
     const creators = await this.listCreators();
     return this.createRoom(creators[0].id);
   }
 
   public async endRoom(roomId: string): Promise<boolean> {
-    // FUTURO ENDPOINT REAL: POST /api/pk/rooms/:roomId/end
-    // Consolida o placar geral no banco de dados e encerra sincronização de presentes na sala.
+    // 1. Atualiza no Firestore
+    try {
+      const roomRef = doc(db, 'pkRooms', roomId);
+      await updateDoc(roomRef, { status: 'completed' });
+    } catch (err) {
+      console.warn('[PKRoomService] Falha ao atualizar fim de sala no Firestore:', err);
+    }
+
+    // 2. Atualiza localmente
     const rooms = this.getActiveRooms();
-    const filtered = rooms.filter((r) => r.roomId !== roomId);
+    const filtered = rooms.map(r => r.roomId === roomId ? { ...r, status: 'completed' as const } : r);
     this.saveActiveRooms(filtered);
     return true;
   }
