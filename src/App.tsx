@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate, useParams, Navigate } from 'react-router-dom';
 import { 
   Swords, Video, Trophy, Shield, Wallet, Play, Flame, Youtube, 
   HelpCircle, Sparkles, LogOut, Check, AlertCircle, Info, Radio
@@ -29,9 +30,42 @@ import CreateLiveView from './pages/CreateLiveView';
 import PKRoomView from './pages/PKRoomView';
 import DiscoverLivesView from './pages/DiscoverLivesView';
 import SpectatorProfileView from './pages/SpectatorProfileView';
+import DownloadStudioView from './pages/DownloadStudioView';
 
-export default function App() {
-  const [currentView, setCurrentView] = useState<string>('landing');
+function AppContent() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Compute currentView dynamically from current pathname to retain compatibility
+  let currentView = 'landing';
+  if (location.pathname === '/descobrir') currentView = 'discover';
+  else if (location.pathname.startsWith('/sala/')) currentView = 'pk-room';
+  else if (location.pathname === '/demo') currentView = 'spectator-pk-room';
+  else if (location.pathname === '/carteira') currentView = 'wallet';
+  else if (location.pathname === '/ranking') currentView = 'ranking';
+  else if (location.pathname === '/perfil') currentView = 'spectator-profile';
+  else if (location.pathname === '/admin') currentView = 'admin';
+  else if (location.pathname === '/baixar-studio') currentView = 'baixar-studio';
+  else if (location.pathname === '/login') currentView = 'login';
+  else if (location.pathname === '/dashboard-criador') currentView = 'creator-dashboard';
+  else if (location.pathname === '/central-criador') currentView = 'creator-battle-hub';
+  else if (location.pathname === '/criar-live') currentView = 'create-live';
+
+  const setCurrentView = (view: string) => {
+    if (view === 'landing') navigate('/');
+    else if (view === 'discover') navigate('/descobrir');
+    else if (view === 'wallet') navigate('/carteira');
+    else if (view === 'spectator-profile') navigate('/perfil');
+    else if (view === 'ranking') navigate('/ranking');
+    else if (view === 'admin') navigate('/admin');
+    else if (view === 'baixar-studio') navigate('/baixar-studio');
+    else if (view === 'demo') navigate('/demo');
+    else if (view === 'spectator-pk-room') navigate('/demo');
+    else if (view === 'login') navigate('/login');
+    else if (view === 'creator-dashboard') navigate('/dashboard-criador');
+    else if (view === 'creator-battle-hub') navigate('/central-criador');
+    else if (view === 'create-live') navigate('/criar-live');
+  };
   
   // Shared balances synced with paymentService local storage database
   const [userCoins, setUserCoinsState] = useState<number>(() => paymentService.getCoins());
@@ -654,132 +688,177 @@ export default function App() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex-1 w-full relative">
         <div className="animate-fade-in">
           
-          {currentView === 'landing' && (
-            <LandingView 
-              onNavigate={setCurrentView}
-              activeCreatorCount={allCreators.filter(c => c.isLive).length}
-              activeBattles={battles.filter(b => b.status === 'active')}
-              onSelectBattle={(b) => {
-                setSelectedBattleId(b.id);
-                setCurrentView('spectator-pk-room');
-              }}
+          <Routes>
+            <Route 
+              path="/" 
+              element={
+                <LandingView 
+                  onNavigate={setCurrentView}
+                  activeCreatorCount={allCreators.filter(c => c.isLive).length}
+                  activeBattles={battles.filter(b => b.status === 'active')}
+                  onSelectBattle={(b) => {
+                    setSelectedBattleId(b.id);
+                    setCurrentView('spectator-pk-room');
+                  }}
+                />
+              } 
             />
-          )}
 
-          {currentView === 'login' && (
-            <LoginConnectView
-              onConnect={handleConnectCreator}
-              isAlreadyConnected={!!connectedCreator}
-              connectedCreator={connectedCreator}
-              onDisconnect={handleDisconnectCreator}
+            <Route 
+              path="/login" 
+              element={
+                <LoginConnectView
+                  onConnect={handleConnectCreator}
+                  isAlreadyConnected={!!connectedCreator}
+                  connectedCreator={connectedCreator}
+                  onDisconnect={handleDisconnectCreator}
+                />
+              } 
             />
-          )}
 
-          {currentView === 'create-live' && (
-            <CreateLiveView
-              connectedCreator={connectedCreator}
-              onNavigate={setCurrentView}
-              onLiveCreated={handleStartLive}
+            <Route 
+              path="/criar-live" 
+              element={
+                <CreateLiveView
+                  connectedCreator={connectedCreator}
+                  onNavigate={setCurrentView}
+                  onLiveCreated={handleStartLive}
+                />
+              } 
             />
-          )}
 
-          {currentView === 'creator-dashboard' && (
-            <CreatorDashboard
-              connectedCreator={connectedCreator}
-              onNavigate={setCurrentView}
-              onStartLive={handleStartLive}
-              onStopLive={handleStopLive}
-              invites={invites.filter(i => connectedCreator && i.target.id === connectedCreator.id)}
-              onAcceptInvite={handleAcceptInvite}
-              onDeclineInvite={handleDeclineInvite}
-              onSendInvite={handleSendInvite}
-              allCreators={allCreators}
-              onSimulateIncomingInvite={handleSimulateIncomingInvite}
-              creatorEarningsBRL={creatorEarningsBRL}
-              onStartPKRoom={handleStartPKRoom}
-              activePKRoom={activePKRoom}
+            <Route 
+              path="/dashboard-criador" 
+              element={
+                <CreatorDashboard
+                  connectedCreator={connectedCreator}
+                  onNavigate={setCurrentView}
+                  onStartLive={handleStartLive}
+                  onStopLive={handleStopLive}
+                  invites={invites.filter(i => connectedCreator && i.target.id === connectedCreator.id)}
+                  onAcceptInvite={handleAcceptInvite}
+                  onDeclineInvite={handleDeclineInvite}
+                  onSendInvite={handleSendInvite}
+                  allCreators={allCreators}
+                  onSimulateIncomingInvite={handleSimulateIncomingInvite}
+                  creatorEarningsBRL={creatorEarningsBRL}
+                  onStartPKRoom={handleStartPKRoom}
+                  activePKRoom={activePKRoom}
+                />
+              } 
             />
-          )}
 
-          {currentView === 'pk-room' && activePKRoom && (
-            <PKRoomView
-              room={activePKRoom}
-              onNavigate={setCurrentView}
-              userCoins={userCoins}
-              onCoinsChange={setUserCoins}
-              onUpdateRoom={setActivePKRoom}
+            <Route 
+              path="/sala/:roomId" 
+              element={
+                <PKRoomRouteWrapper
+                  userCoins={userCoins}
+                  setUserCoins={setUserCoins}
+                  allCreators={allCreators}
+                  INITIAL_CREATORS={INITIAL_CREATORS}
+                  GLOBAL_GIFTS={GLOBAL_GIFTS}
+                />
+              } 
             />
-          )}
 
-          {currentView === 'spectator-pk-room' && (
-            <PublicBattleRoom
-              battle={activeBattleObj}
-              onSendGift={handleSendGift}
-              userCoins={userCoins}
-              onCoinsChange={setUserCoins}
-              onNavigate={setCurrentView}
-              onTickBattle={(bId) => {
-                // Time counts down naturally through App.tsx timer cycle
-              }}
+            <Route 
+              path="/demo" 
+              element={
+                <PublicBattleRoom
+                  battle={activeBattleObj}
+                  onSendGift={handleSendGift}
+                  userCoins={userCoins}
+                  onCoinsChange={setUserCoins}
+                  onNavigate={setCurrentView}
+                  onTickBattle={(bId) => {
+                    // Time counts down naturally through App.tsx timer cycle
+                  }}
+                />
+              } 
             />
-          )}
 
-          {currentView === 'creator-battle-hub' && (
-            <LivePKCreatorHub
-              battle={battles.find(b => b.status === 'active' && connectedCreator && (b.creatorRed.id === connectedCreator.id || b.creatorBlue.id === connectedCreator.id)) || null}
-              onNavigate={setCurrentView}
-              onSimulateBigGifts={handleSimulateBigGifts}
-              onForceEndBattle={handleForceEndBattle}
+            <Route 
+              path="/central-criador" 
+              element={
+                <LivePKCreatorHub
+                  battle={battles.find(b => b.status === 'active' && connectedCreator && (b.creatorRed.id === connectedCreator.id || b.creatorBlue.id === connectedCreator.id)) || null}
+                  onNavigate={setCurrentView}
+                  onSimulateBigGifts={handleSimulateBigGifts}
+                  onForceEndBattle={handleForceEndBattle}
+                />
+              } 
             />
-          )}
 
-          {currentView === 'wallet' && (
-            <ProfileWalletView
-              userCoins={userCoins}
-              onCoinsChange={setUserCoins}
-              creatorEarningsBRL={creatorEarningsBRL}
-              onEarningsChange={setCreatorEarningsBRL}
+            <Route 
+              path="/carteira" 
+              element={
+                <ProfileWalletView
+                  userCoins={userCoins}
+                  onCoinsChange={setUserCoins}
+                  creatorEarningsBRL={creatorEarningsBRL}
+                  onEarningsChange={setCreatorEarningsBRL}
+                />
+              } 
             />
-          )}
 
-          {currentView === 'discover' && (
-            <DiscoverLivesView 
-              onNavigate={setCurrentView}
-              allCreators={allCreators}
-              activeBattles={battles}
-              onSelectBattle={(b) => {
-                setSelectedBattleId(b.id);
-                setCurrentView('spectator-pk-room');
-              }}
+            <Route 
+              path="/descobrir" 
+              element={
+                <DiscoverLivesView 
+                  onNavigate={setCurrentView}
+                  allCreators={allCreators}
+                  activeBattles={battles}
+                  onSelectBattle={(b) => {
+                    setSelectedBattleId(b.id);
+                    setCurrentView('spectator-pk-room');
+                  }}
+                />
+              } 
             />
-          )}
 
-          {currentView === 'spectator-profile' && (
-            <SpectatorProfileView 
-              onNavigate={setCurrentView}
-              allCreators={allCreators}
+            <Route 
+              path="/perfil" 
+              element={
+                <SpectatorProfileView 
+                  onNavigate={setCurrentView}
+                  allCreators={allCreators}
+                />
+              } 
             />
-          )}
 
-          {currentView === 'ranking' && (
-            <RankingView 
-              allCreators={allCreators} 
+            <Route 
+              path="/ranking" 
+              element={
+                <RankingView 
+                  allCreators={allCreators} 
+                />
+              } 
             />
-          )}
 
-          {currentView === 'admin' && (
-            <ModerationView
-              auditLogs={auditLogs}
-              onAddAuditLog={addAuditLog}
-              onClearLog={handleClearLog}
-              allCreators={allCreators}
-              setAllCreators={setAllCreators}
-              battles={battles}
-              setBattles={setBattles}
-              activePKRoom={activePKRoom}
-              setActivePKRoom={setActivePKRoom}
+            <Route 
+              path="/admin" 
+              element={
+                <ModerationView
+                  auditLogs={auditLogs}
+                  onAddAuditLog={addAuditLog}
+                  onClearLog={handleClearLog}
+                  allCreators={allCreators}
+                  setAllCreators={setAllCreators}
+                  battles={battles}
+                  setBattles={setBattles}
+                  activePKRoom={activePKRoom}
+                  setActivePKRoom={setActivePKRoom}
+                />
+              } 
             />
-          )}
+
+            <Route 
+              path="/baixar-studio" 
+              element={<DownloadStudioView />} 
+            />
+
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
 
         </div>
       </main>
@@ -802,5 +881,141 @@ export default function App() {
       </footer>
 
     </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// PK ROOM FIRESTORE ROUTE WRAPPER
+// ----------------------------------------------------------------------------
+function PKRoomRouteWrapper({ 
+  userCoins, 
+  setUserCoins, 
+  allCreators,
+  INITIAL_CREATORS,
+  GLOBAL_GIFTS
+}: { 
+  userCoins: number; 
+  setUserCoins: any; 
+  allCreators: Creator[];
+  INITIAL_CREATORS: Creator[];
+  GLOBAL_GIFTS: Gift[];
+}) {
+  const { roomId } = useParams<{ roomId: string }>();
+  const navigate = useNavigate();
+  const [room, setRoom] = useState<PKRoom | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!roomId) return;
+    setLoading(true);
+    
+    // Subscribe to Firestore PKRoom changes
+    const unsubscribe = firebaseService.subscribeToPKRoom(roomId, (updatedRoom) => {
+      if (updatedRoom) {
+        setRoom(updatedRoom);
+      } else {
+        // Fallback room matching requirements
+        const creatorA = allCreators[0] || INITIAL_CREATORS[0];
+        const creatorB = allCreators[1] || INITIAL_CREATORS[1];
+        const fallbackRoom: PKRoom = {
+          roomId: roomId,
+          creatorA: creatorA,
+          creatorB: { ...creatorB, isLive: true, liveTitle: `Batalha PK de @${creatorB.channelName}`, youtubeVideoId: 'm79Hh_f0R7o' },
+          liveA: {
+            videoId: 'U8C6EsuM_Gg',
+            title: `Batalha PK de @${creatorA.channelName}`,
+            embedUrl: 'https://www.youtube.com/embed/U8C6EsuM_Gg',
+            watchUrl: 'https://www.youtube.com/watch?v=U8C6EsuM_Gg',
+            status: 'live'
+          },
+          liveB: {
+            videoId: 'm79Hh_f0R7o',
+            title: `Live de @${creatorB.channelName}`,
+            embedUrl: 'https://www.youtube.com/embed/m79Hh_f0R7o',
+            watchUrl: 'https://www.youtube.com/watch?v=m79Hh_f0R7o',
+            status: 'live'
+          },
+          scoreA: 14200,
+          scoreB: 11500,
+          timer: 240,
+          status: 'active',
+          gifts: GLOBAL_GIFTS,
+          chatMessages: [],
+          viewers: 2410,
+          ranking: []
+        };
+        setRoom(fallbackRoom);
+      }
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [roomId, allCreators, INITIAL_CREATORS, GLOBAL_GIFTS]);
+
+  const onNavigatePath = (view: string) => {
+    if (view === 'landing') navigate('/');
+    else if (view === 'discover') navigate('/descobrir');
+    else if (view === 'wallet') navigate('/carteira');
+    else if (view === 'spectator-profile') navigate('/perfil');
+    else if (view === 'ranking') navigate('/ranking');
+    else if (view === 'admin') navigate('/admin');
+    else if (view === 'baixar-studio') navigate('/baixar-studio');
+    else if (view === 'demo') navigate('/demo');
+  };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[65vh] space-y-4">
+        <div className="w-12 h-12 rounded-full border-4 border-rose-500/20 border-t-rose-500 animate-spin" />
+        <p className="text-[10px] font-mono font-black tracking-widest text-zinc-400 uppercase">
+          Sincronizando com Firestore do Canal...
+        </p>
+      </div>
+    );
+  }
+
+  if (!room) {
+    return (
+      <div className="max-w-md mx-auto text-center py-20 space-y-4">
+        <h3 className="text-xl font-black text-white italic">SESSÃO NÃO ENCONTRADA</h3>
+        <p className="text-zinc-400 text-xs leading-relaxed font-sans">
+          A sala PK informada expirou ou foi dada como encerrada pelos moderadores das arenas.
+        </p>
+        <button
+          onClick={() => navigate('/descobrir')}
+          className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs uppercase rounded-xl"
+        >
+          Ir para Duelos Ativos
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <PKRoomView
+      room={room}
+      onNavigate={onNavigatePath}
+      userCoins={userCoins}
+      onCoinsChange={setUserCoins}
+      onUpdateRoom={(newRoom) => {
+        setRoom(newRoom);
+        try {
+          firebaseService.updateRoomScore(room.roomId, newRoom.scoreA, newRoom.scoreB);
+        } catch (e) {
+          console.warn(e);
+        }
+      }}
+    />
+  );
+}
+
+// ----------------------------------------------------------------------------
+// EXPORTING APP WITH ROUTER SHELL
+// ----------------------------------------------------------------------------
+export default function App() {
+  return (
+    <Router>
+      <AppContent />
+    </Router>
   );
 }

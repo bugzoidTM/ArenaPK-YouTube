@@ -528,7 +528,7 @@ export default function CreatorDashboard({
                   <div className="p-3.5 bg-rose-500/5 rounded-xl border border-rose-500/10 text-[10px] text-zinc-400 flex items-start gap-2.5 leading-relaxed">
                     <span className="text-sm select-none">💡</span>
                     <p>
-                      Sua live do YouTube será transmitida dentro das salas PK oficiais. Os ajudantes de suporte podem gerenciar doações de PIX e chat sincronizado global do portal de forma integrada.
+                      Sua live do YouTube será integrada dentro das salas PK da ArenaPK Web. Os espectadores poderão assistir aos jogadores, enviar mimos e conversar de forma unificada. Para o envio direto de streaming de vídeo nativo, no futuro os criadores usarão o ArenaPK Studio Windows.
                     </p>
                   </div>
                 </div>
@@ -564,7 +564,7 @@ export default function CreatorDashboard({
                     <span>•</span>
                     <span>Qualidade: <span className="text-zinc-400">{streamResolution}</span></span>
                     <span>•</span>
-                    <span>Encoder: <span className="text-zinc-200">ArenaPK API Server</span></span>
+                    <span>Sincronismo: <span className="text-zinc-200">ArenaPK API Server</span></span>
                   </div>
                 </div>
                 <div className="space-y-4 pt-4 border-t border-white/10">

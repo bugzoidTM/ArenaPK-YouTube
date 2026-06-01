@@ -43,9 +43,13 @@ export default function LandingView({ onNavigate, activeCreatorCount, activeBatt
         <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.01)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.01)_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-30" />
         
         {/* Modern animated subtle ambient badge */}
-        <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 text-xs font-mono font-bold uppercase tracking-wider mb-8 animate-pulse select-none">
-          <Flame className="w-3.5 h-3.5 text-rose-500" />
-          PROJETO SANDBOX • REVOLUÇÃO STREAMER
+        <div className="inline-flex flex-col sm:flex-row items-center gap-2 px-3.5 py-1.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 text-xs font-mono font-bold uppercase tracking-wider mb-8 select-none">
+          <div className="flex items-center gap-1">
+            <Flame className="w-3.5 h-3.5 text-rose-500" />
+            <span>PORTAL ARENAPK • INDEPENDENTE</span>
+          </div>
+          <span className="hidden sm:inline text-zinc-650">|</span>
+          <span className="text-[10px] text-zinc-300">Suporte a Lives integradas via Jogos e Presentes Virtuais</span>
         </div>
 
         {/* requested head title */}
@@ -55,13 +59,13 @@ export default function LandingView({ onNavigate, activeCreatorCount, activeBatt
         
         {/* requested exact subtitle */}
         <p className="mt-6 text-zinc-300 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed font-sans">
-          Transforme lives do YouTube em batalhas PK com chat único, presentes, placar e ranking em tempo real.
+          Acompanhe duelos e gerencie salas PK do seu canal com chat unificado, placar e ranking de presentes virtuais em tempo real.
         </p>
 
         {/* requested buttons: Entrar como criador. Assistir salas ao vivo. Ver demonstração. */}
         <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 relative z-10 max-w-2xl mx-auto">
           <button
-            onClick={() => onNavigate('creator-dashboard')}
+            onClick={() => onNavigate('baixar-studio')}
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs uppercase tracking-widest transition-all hover:-translate-y-0.5 shadow-lg shadow-rose-600/20 border border-white/5 cursor-pointer"
           >
             <Video className="w-4 h-4 fill-current" />
@@ -69,7 +73,7 @@ export default function LandingView({ onNavigate, activeCreatorCount, activeBatt
           </button>
           
           <button
-            onClick={handleScrollToLive}
+            onClick={() => onNavigate('discover')}
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-150 font-black text-xs uppercase tracking-widest border border-white/5 transition-all hover:-translate-y-0.5 cursor-pointer shadow-md"
           >
             <Tv className="w-4 h-4 text-zinc-400" />
@@ -77,7 +81,7 @@ export default function LandingView({ onNavigate, activeCreatorCount, activeBatt
           </button>
 
           <button
-            onClick={handleDemoPlay}
+            onClick={() => onNavigate('demo')}
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl bg-gradient-to-r from-blue-700/80 to-indigo-700/80 hover:from-blue-600 hover:to-indigo-600 text-white font-black text-xs uppercase tracking-widest border border-white/5 transition-all hover:-translate-y-0.5 cursor-pointer shadow-lg shadow-blue-500/10"
           >
             <Play className="w-3.5 h-3.5 fill-current text-white animate-pulse" />
@@ -111,7 +115,7 @@ export default function LandingView({ onNavigate, activeCreatorCount, activeBatt
         <div className="max-w-3xl mx-auto text-center mb-12">
           <span className="text-[9px] font-mono font-black tracking-widest text-rose-455 uppercase bg-rose-500/10 px-3 py-1 rounded-lg border border-rose-500/20">FÁCIL E RÁPIDO</span>
           <h3 className="text-2xl md:text-3xl font-black text-white uppercase italic tracking-tight mt-3">COMO FUNCIONA</h3>
-          <p className="text-zinc-400 text-xs mt-1.5 font-sans">Comece em menos de 2 minutos diretamente com o seu browser favorito</p>
+          <p className="text-zinc-400 text-xs mt-1.5 font-sans">Acompanhe e torça em menos de 2 minutos diretamente no seu navegador favorito</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
@@ -119,9 +123,9 @@ export default function LandingView({ onNavigate, activeCreatorCount, activeBatt
             <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20 flex items-center justify-center font-mono font-black italic text-sm">
               01
             </div>
-            <h4 className="font-extrabold text-white uppercase tracking-wider text-xs">Inicie sua live pelo app</h4>
+            <h4 className="font-extrabold text-white uppercase tracking-wider text-xs">Crie a Sala PK pela Web</h4>
             <p className="text-xs text-zinc-400 leading-relaxed font-sans">
-              Insira o título da sua live do YouTube e nosso player incorporador reconhece seu fluxo sem chaves complicadas.
+              Gerencie batalhas PK, configure punições e ative alertas enquanto o público interage diretamente no portal Web de forma integrada.
             </p>
           </div>
 
@@ -171,8 +175,8 @@ export default function LandingView({ onNavigate, activeCreatorCount, activeBatt
               ✓
             </div>
             <div>
-              <h4 className="font-bold text-white text-sm uppercase tracking-wider">Não precisa OBS</h4>
-              <p className="text-xs text-zinc-400 leading-relaxed font-sans mt-1">Esqueça layouts manuais de captura de janela de navegador no OBS Studio, configure tudo direto pela interface.</p>
+              <h4 className="font-bold text-white text-sm uppercase tracking-wider">ArenaPK Studio Windows</h4>
+              <p className="text-xs text-zinc-400 leading-relaxed font-sans mt-1">No futuro, os criadores transmitirão vídeo usando um software Windows dedicado, mantendo a web para salas e interações.</p>
             </div>
           </div>
 
@@ -191,8 +195,8 @@ export default function LandingView({ onNavigate, activeCreatorCount, activeBatt
               ✓
             </div>
             <div>
-              <h4 className="font-bold text-white text-sm uppercase tracking-wider">Presentes próprios</h4>
-              <p className="text-xs text-zinc-400 leading-relaxed font-sans mt-1">Dezenas de itens que liberam reações com animações explosivas e efeitos sonoros para instigar o apoio.</p>
+              <h4 className="font-bold text-white text-sm uppercase tracking-wider">Presentes Exclusivos</h4>
+              <p className="text-xs text-zinc-400 leading-relaxed font-sans mt-1">Presentes e mimos virtuais interativos criados exclusivamente pela ArenaPK (não vinculados ao YouTube Oficial).</p>
             </div>
           </div>
 
@@ -221,8 +225,8 @@ export default function LandingView({ onNavigate, activeCreatorCount, activeBatt
               ✓
             </div>
             <div>
-              <h4 className="font-bold text-white text-sm uppercase tracking-wider">Players oficiais do YouTube</h4>
-              <p className="text-xs text-zinc-400 leading-relaxed font-sans mt-1">Incorporação de alto rendimento que preserva os views, likes e a receita de comerciais padrão dos criadores.</p>
+              <h4 className="font-bold text-white text-sm uppercase tracking-wider">Players Incorporados</h4>
+              <p className="text-xs text-zinc-400 leading-relaxed font-sans mt-1">Incorporação de players do YouTube padrão via API de Iframe, mantendo visualizações diretamente na fonte.</p>
             </div>
           </div>
 

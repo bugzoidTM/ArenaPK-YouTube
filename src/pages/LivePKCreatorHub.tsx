@@ -900,7 +900,7 @@ export default function LivePKCreatorHub({
               <div className="p-3.5 bg-rose-500/5 border border-rose-500/15 rounded-xl text-xs space-y-2 leading-relaxed text-zinc-300 font-sans">
                 <p className="font-extrabold text-white">💡 MÓDULO EXPERIMENTAL EM DESENVOLVIMENTO:</p>
                 <p>
-                  No futuro, você não precisará do OBS Studio! Este painel renderizará o feed de câmera local, o player do rival via WebRTC, o placar ativo e efeitos 3D de presentes recebidos diretamente no navegador (HTML5 Canvas + WebGL + Audio Node Router).
+                  No futuro, os criadores poderão baixar o ArenaPK Studio Windows dedicado para transmissão robusta de vídeo com baixíssima latência. Esse aplicativo capturará sua câmera, o player do rival, o placar e integrará alertas animados de presentes e doações na transmissão em altíssimo desempenho.
                 </p>
                 <p>
                   Tudo será empacotado em um único canal RTMP de latência ultra baixa e transmitido diretamente para o servidor de ingestão do YouTube! Mude as configurações simuladas abaixo:

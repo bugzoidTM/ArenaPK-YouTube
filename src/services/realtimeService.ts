@@ -83,13 +83,15 @@ export interface IRealtimeService {
   connect(): Promise<boolean>;
   disconnect(): void;
   isConnected(): boolean;
-  joinRoom(roomId: string): void;
+  joinRoom(roomId: string, enableSimulation?: boolean): void;
   leaveRoom(): void;
   on<T extends PKEvent>(event: T, callback: EventCallback<T>): void;
   off<T extends PKEvent>(event: T, callback: EventCallback<T>): void;
   sendEvent<T extends PKEvent>(event: T, payload: RealtimeEventPayloads[T]): void;
   isUserMuted(username: string): boolean;
   muteUserInCache(username: string, mute: boolean): void;
+  addProcessedChatId(id: string): void;
+  addProcessedGiftId(id: string): void;
 }
 
 /**
@@ -106,6 +108,10 @@ class RealtimeService implements IRealtimeService {
   private roomUnsubscribe: (() => void) | null = null;
   private chatUnsubscribe: (() => void) | null = null;
   private giftsUnsubscribe: (() => void) | null = null;
+
+  // Track processed message and gift IDs to prevent duplication in production with local triggerEvent
+  private processedChatIds: Set<string> = new Set();
+  private processedGiftIds: Set<string> = new Set();
 
   // Track muted users list in local memory to simulate moderation block list
   private mutedUsers: Set<string> = new Set();
@@ -131,11 +137,21 @@ class RealtimeService implements IRealtimeService {
     this.stopRoomSimulation();
     this.unsubscribeAll();
     this.listeners = {};
+    this.processedChatIds.clear();
+    this.processedGiftIds.clear();
     console.log('[RealtimeService] Desconectado da transmissão global.');
   }
 
   public isConnected(): boolean {
     return this.socketConnected;
+  }
+
+  public addProcessedChatId(id: string) {
+    this.processedChatIds.add(id);
+  }
+
+  public addProcessedGiftId(id: string) {
+    this.processedGiftIds.add(id);
   }
 
   private unsubscribeAll() {
@@ -153,15 +169,17 @@ class RealtimeService implements IRealtimeService {
     }
   }
 
-  public joinRoom(roomId: string) {
+  public joinRoom(roomId: string, enableSimulation: boolean = false) {
     if (!this.socketConnected) {
       this.connect();
     }
     
     this.currentRoomId = roomId;
     this.unsubscribeAll();
+    this.processedChatIds.clear();
+    this.processedGiftIds.clear();
 
-    console.log(`[RealtimeService] Conectando sala do Firestore: ${roomId}`);
+    console.log(`[RealtimeService] Conectando sala do Firestore: ${roomId} (Simulação: ${enableSimulation})`);
 
     // --- 1. Sincronismo do Placar, Status e Cronômetro via Firestore ---
     try {
@@ -200,15 +218,20 @@ class RealtimeService implements IRealtimeService {
     // --- 2. Sincronismo do Chat Próprio via Firestore ---
     try {
       const chatQuery = query(
-        collection(db, 'pkRooms', roomId, 'chatMessages'),
-        orderBy('timestamp', 'asc'),
-        limit(50)
+          collection(db, 'pkRooms', roomId, 'chatMessages'),
+          orderBy('timestamp', 'asc'),
+          limit(50)
       );
 
       this.chatUnsubscribe = onSnapshot(chatQuery, (snapshot) => {
         snapshot.docChanges().forEach((change) => {
           if (change.type === 'added') {
             const data = change.doc.data();
+            
+            // Deduplicate! (Avoid duplicating because user typed and triggered local event + Firestore syncd it back)
+            if (this.processedChatIds.has(data.id)) return;
+            this.processedChatIds.add(data.id);
+
             const message: ChatMessage = {
               id: data.id,
               senderName: data.senderName,
@@ -230,25 +253,28 @@ class RealtimeService implements IRealtimeService {
     // --- 3. Sincronismo do Feed de Presentes via Firestore ---
     try {
       const giftQuery = query(
-        collection(db, 'pkRooms', roomId, 'giftEvents'),
-        orderBy('timestamp', 'asc')
+          collection(db, 'pkRooms', roomId, 'giftEvents'),
+          orderBy('timestamp', 'asc')
       );
 
       this.giftsUnsubscribe = onSnapshot(giftQuery, (snapshot) => {
         snapshot.docChanges().forEach((change) => {
           if (change.type === 'added') {
             const data = change.doc.data();
-            if (data.senderName !== 'Você (Super Doador)' && data.senderName !== 'Você (Moderador)') {
-              this.triggerLocalEvent(PKEvent.GIFT_SENT, {
-                senderName: data.senderName,
-                senderAvatar: data.senderAvatar || '',
-                giftName: data.giftName,
-                giftIcon: data.giftIcon,
-                coinValue: data.coinValue,
-                pkPointsBonus: data.pkPointsBonus,
-                isForCreatorA: data.isForCreatorA
-              });
-            }
+            
+            // Deduplicate!
+            if (this.processedGiftIds.has(data.id)) return;
+            this.processedGiftIds.add(data.id);
+
+            this.triggerLocalEvent(PKEvent.GIFT_SENT, {
+              senderName: data.senderName,
+              senderAvatar: data.senderAvatar || '',
+              giftName: data.giftName,
+              giftIcon: data.giftIcon,
+              coinValue: data.coinValue,
+              pkPointsBonus: data.pkPointsBonus,
+              isForCreatorA: data.targetSide === 'A' || data.isForCreatorA || false
+            });
           }
         });
       }, (error) => {
@@ -258,8 +284,11 @@ class RealtimeService implements IRealtimeService {
       console.warn('[RealtimeService] Firestore giftEvents sync indisponível, operando offline:', err);
     }
 
-    // Ativa simulação incremental em background para dar interatividade adicional
-    this.startRoomSimulation(roomId);
+    // Ativa simulação incremental em background apenas em demo ou com env habilitador
+    const runSimulation = enableSimulation || ((import.meta as any).env && (import.meta as any).env.VITE_ENABLE_DEMO_SIMULATION === 'true');
+    if (runSimulation) {
+      this.startRoomSimulation(roomId);
+    }
   }
 
   public leaveRoom() {
@@ -283,11 +312,17 @@ class RealtimeService implements IRealtimeService {
 
   public async sendEvent<T extends PKEvent>(event: T, payload: RealtimeEventPayloads[T]) {
     if (!this.socketConnected) {
-      console.error('[RealtimeService] Sem conexão de soquete ativa.');
+      console.error('[RealtimeService] Sem conexão de soquete activa.');
       return;
     }
 
-    // Primeiro repassa localmente
+    // Adiciona o id enviado aos rastreadores para evitar duplicidade com o evento disparado localmente
+    if (event === PKEvent.CHAT_MESSAGE) {
+      const chatPayload = payload as RealtimeEventPayloads[PKEvent.CHAT_MESSAGE];
+      this.processedChatIds.add(chatPayload.message.id);
+    }
+
+    // Primeiro repassa localmente para resposta de latência instantânea
     this.triggerLocalEvent(event, payload);
 
     // Se houver sala ativa, sincroniza de forma real no Firestore
@@ -299,12 +334,14 @@ class RealtimeService implements IRealtimeService {
           const msgRef = doc(db, 'pkRooms', currentRoomId, 'chatMessages', chatPayload.message.id);
           await setDoc(msgRef, {
             id: chatPayload.message.id,
+            roomId: currentRoomId,
+            senderId: 'usr-self',
             senderName: chatPayload.message.senderName,
             senderAvatar: chatPayload.message.senderAvatar || '',
             role: chatPayload.message.role || 'viewer',
             text: chatPayload.message.text,
-            roomId: currentRoomId,
-            timestamp: chatPayload.message.timestamp || new Date().toISOString()
+            timestamp: chatPayload.message.timestamp || new Date().toISOString(),
+            createdAt: new Date().toISOString()
           });
         } catch (dbErr) {
           console.warn('[RealtimeService] Falha ao sincronizar chat no Firestore:', dbErr);
@@ -317,20 +354,24 @@ class RealtimeService implements IRealtimeService {
       } else if (event === PKEvent.GIFT_SENT) {
         const giftPayload = payload as RealtimeEventPayloads[PKEvent.GIFT_SENT];
         const eventId = `gift-event-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        this.processedGiftIds.add(eventId);
 
         try {
           // 1. Registra evento de mimo recebido no sub-collection
           await setDoc(doc(db, 'pkRooms', currentRoomId, 'giftEvents', eventId), {
             id: eventId,
             roomId: currentRoomId,
+            senderId: 'usr-self',
             senderName: giftPayload.senderName,
             senderAvatar: giftPayload.senderAvatar,
             giftName: giftPayload.giftName,
             giftIcon: giftPayload.giftIcon,
             coinValue: giftPayload.coinValue,
             pkPointsBonus: giftPayload.pkPointsBonus,
+            targetSide: giftPayload.isForCreatorA ? 'A' : 'B',
             isForCreatorA: giftPayload.isForCreatorA,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            createdAt: new Date().toISOString()
           });
 
           // 2. Transação atômica ou incremento do placar na arena

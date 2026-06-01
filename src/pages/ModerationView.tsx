@@ -21,11 +21,15 @@ import {
   Search, 
   UserMinus, 
   Ban, 
-  ExternalLink 
+  ExternalLink,
+  Laptop
 } from 'lucide-react';
 import { Creator, PKBattle, PKRoom, SystemAuditLog, Gift } from '../types';
 import { moderationService, ReportedMessage } from '../services/moderationService';
 import { paymentService, GiftTransaction } from '../services/paymentService';
+import { db } from '../services/firebase';
+import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { firebaseService } from '../services/firebaseService';
 
 interface ModerationViewProps {
   auditLogs: SystemAuditLog[];
@@ -64,7 +68,49 @@ export default function ModerationView({
   const [newWord, setNewWord] = useState('');
 
   // Tab navigation
-  const [activeTab, setActiveTab] = useState<'rooms' | 'reports' | 'txs' | 'rules' | 'logs'>('rooms');
+  const [activeTab, setActiveTab] = useState<'rooms' | 'reports' | 'txs' | 'rules' | 'logs' | 'gifts'>('rooms');
+
+  // GiftEvents (Studio Win32 Monitor) states
+  const [giftEvents, setGiftEvents] = useState<any[]>([]);
+  const [selectedRoomId, setSelectedRoomId] = useState<string>('');
+
+  const roomsList = battles.map(b => ({ id: b.id, name: `${b.creatorRed.name} vs ${b.creatorBlue.name}` }));
+  if (activePKRoom && !roomsList.some(r => r.id === activePKRoom.roomId)) {
+    roomsList.push({ id: activePKRoom.roomId, name: `${activePKRoom.creatorA.name} em Atividade (Firestore)` });
+  }
+
+  useEffect(() => {
+    // Select first room if none is selected
+    if (!selectedRoomId && roomsList.length > 0) {
+      setSelectedRoomId(roomsList[0].id);
+      return;
+    }
+
+    if (!selectedRoomId) return;
+
+    console.log(`[ModerationView] Monitorando presentes da sala do Firestore: ${selectedRoomId}`);
+    try {
+      const q = query(
+        collection(db, 'pkRooms', selectedRoomId, 'giftEvents'),
+        orderBy('timestamp', 'desc'),
+        limit(100)
+      );
+
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const events: any[] = [];
+        snapshot.forEach((doc) => {
+          events.push({ id: doc.id, ...doc.data() });
+        });
+        setGiftEvents(events);
+      }, (err) => {
+        console.warn(`[ModerationView] Falha ao escutar giftEvents para a sala ${selectedRoomId}:`, err);
+      });
+
+      return () => unsubscribe();
+    } catch (e) {
+      console.error('[ModerationView] Firestore indisponível para monitoramento de presentes:', e);
+    }
+  }, [selectedRoomId, battles.length, activePKRoom]);
 
   // Load and refresh settings from local persistence service
   const refreshServiceStates = () => {
@@ -333,6 +379,17 @@ export default function ModerationView({
           }`}
         >
           📊 Rastro de Auditoria ({serviceAuditLogs.length})
+        </button>
+
+        <button
+          onClick={() => setActiveTab('gifts')}
+          className={`px-4 py-2.5 font-bold text-xs uppercase tracking-wider border-b-2 cursor-pointer whitespace-nowrap transition duration-150 flex items-center gap-1.5 ${
+            activeTab === 'gifts' 
+              ? 'border-rose-500 text-rose-400 font-black' 
+              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          🖥️ Monitor Win32 Studio ({giftEvents.length})
         </button>
       </div>
 
@@ -754,6 +811,174 @@ export default function ModerationView({
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 6: GIFTEVENTS STUDIO MONITOR & SIMULATION DIAGNOSTICS */}
+        {activeTab === 'gifts' && (
+          <div className="space-y-6 animate-fade-in text-left">
+            <div className="bg-zinc-900/60 border border-white/10 rounded-2xl p-6 text-left space-y-6 shadow-xl">
+              
+              {/* Header and Room Selector Selector */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/5 pb-4">
+                <div>
+                  <h3 className="text-sm font-black text-white uppercase tracking-wider font-mono flex items-center gap-1.5">
+                    <Laptop className="w-4 h-4 text-rose-500 animate-pulse" /> Monitor de Mimos ArenaPK Studio Win32
+                  </h3>
+                  <p className="text-xs text-zinc-400 mt-1">
+                    Visualize o feed de presentes da sala conectado ao Firestore. Use os botões das ações para simular a máquina de estados que o futuro programa do Windows executará nativamente.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-zinc-400 font-mono uppercase font-bold shrink-0">Sala Ativa:</span>
+                  <select
+                    value={selectedRoomId}
+                    onChange={(e) => setSelectedRoomId(e.target.value)}
+                    className="bg-zinc-950 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-rose-500 font-mono"
+                  >
+                    {roomsList.length === 0 ? (
+                      <option value="">Nenhuma sala PK ativa</option>
+                    ) : (
+                      roomsList.map(r => (
+                        <option key={r.id} value={r.id}>{r.name}</option>
+                      ))
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              {/* Status Totals Summary Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="p-3 bg-zinc-950/50 border border-white/5 rounded-xl text-center space-y-1">
+                  <span className="text-[9px] uppercase tracking-wider font-bold text-yellow-400 block font-mono">Pendente (Queue)</span>
+                  <p className="text-2xl font-black font-mono text-white">
+                    {giftEvents.filter(e => !e.studioDeliveryStatus || e.studioDeliveryStatus === 'pending').length}
+                  </p>
+                </div>
+                <div className="p-3 bg-zinc-950/50 border border-white/5 rounded-xl text-center space-y-1">
+                  <span className="text-[9px] uppercase tracking-wider font-bold text-sky-400 block font-mono">No Windows Studio</span>
+                  <p className="text-2xl font-black font-mono text-white">
+                    {giftEvents.filter(e => e.studioDeliveryStatus === 'delivered_to_studio').length}
+                  </p>
+                </div>
+                <div className="p-3 bg-zinc-950/50 border border-white/5 rounded-xl text-center space-y-1">
+                  <span className="text-[9px] uppercase tracking-wider font-bold text-emerald-400 block font-mono">Renderizado Overlay</span>
+                  <p className="text-2xl font-black font-mono text-white">
+                    {giftEvents.filter(e => e.studioDeliveryStatus === 'rendered').length}
+                  </p>
+                </div>
+                <div className="p-3 bg-zinc-950/50 border border-white/5 rounded-xl text-center space-y-1">
+                  <span className="text-[9px] uppercase tracking-wider font-bold text-red-500 block font-mono">Falha (Error)</span>
+                  <p className="text-2xl font-black font-mono text-white">
+                    {giftEvents.filter(e => e.studioDeliveryStatus === 'failed').length}
+                  </p>
+                </div>
+              </div>
+
+              {/* GiftEvents List */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-black uppercase text-zinc-300 font-mono tracking-wider">Histórico de Mimos Recentes do Firestore</h4>
+                
+                <div className="space-y-2 max-h-[450px] overflow-y-auto pr-1">
+                  {giftEvents.map((ev) => {
+                    const status = ev.studioDeliveryStatus || 'pending';
+                    let statusLabel = 'Pendente';
+                    let statusColor = 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30';
+                    if (status === 'delivered_to_studio') {
+                      statusLabel = 'Recebido Win32';
+                      statusColor = 'bg-sky-500/20 text-sky-400 border border-sky-500/30';
+                    } else if (status === 'rendered') {
+                      statusLabel = 'Renderizado 3D';
+                      statusColor = 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 animate-pulse';
+                    } else if (status === 'failed') {
+                      statusLabel = 'Falhou';
+                      statusColor = 'bg-red-500/20 text-red-500 border border-red-500/30';
+                    }
+
+                    return (
+                      <div key={ev.id} className="p-4 bg-zinc-950/80 rounded-xl border border-white/5 space-y-3 flex flex-col md:flex-row md:items-center md:justify-between gap-4 shadow-inner">
+                        <div className="flex items-center gap-3">
+                          <span className="text-3xl filter drop-shadow animate-bounce">{ev.giftIcon}</span>
+                          <div className="text-left select-none leading-relaxed">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-extrabold text-sm text-amber-400">{ev.senderName}</span>
+                              <span className={`text-[8px] font-mono font-black uppercase px-1.5 py-0.5 rounded ${statusColor}`}>
+                                {statusLabel}
+                              </span>
+                            </div>
+                            <p className="text-xs text-zinc-300">
+                              Enviou <strong className="text-white">{ev.giftName}</strong> por <span className="text-yellow-400 font-mono font-semibold">{ev.coinValue} moedas</span> (+{ev.pkPointsBonus} pts na partida)
+                            </p>
+                            <p className="text-[9px] font-mono text-zinc-550">
+                              Lado: <strong className="text-white font-black">{ev.targetSide || (ev.isForCreatorA ? 'A' : 'B')}</strong> • ID: <span className="text-zinc-400">{ev.id}</span>
+                            </p>
+                            {ev.failureReason && (
+                              <p className="text-[10px] text-red-400 font-mono font-bold bg-red-950/30 border border-red-500/10 rounded p-1 mt-1">
+                                Erro: {ev.failureReason}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Interactive Studio Emulator Controls */}
+                        <div className="flex items-center gap-1.5 self-start md:self-center flex-wrap">
+                          <button
+                            onClick={() => firebaseService.markGiftDeliveredToStudio(selectedRoomId, ev.id)}
+                            disabled={status !== 'pending'}
+                            className={`px-2.5 py-1.5 rounded-lg text-[10px] font-mono uppercase font-black transition ${
+                              status === 'pending'
+                                ? 'bg-sky-600 hover:bg-sky-500 text-white cursor-pointer active:scale-95'
+                                : 'bg-zinc-900 text-zinc-650 cursor-not-allowed'
+                            }`}
+                            title="Simula quando o software de Windows baixa e escuta o evento localmente"
+                          >
+                            1. Capturar Win32
+                          </button>
+                          
+                          <button
+                            onClick={() => firebaseService.markGiftRenderedByStudio(selectedRoomId, ev.id)}
+                            disabled={status !== 'delivered_to_studio'}
+                            className={`px-2.5 py-1.5 rounded-lg text-[10px] font-mono uppercase font-black transition ${
+                              status === 'delivered_to_studio'
+                                ? 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer active:scale-95'
+                                : 'bg-zinc-900 text-zinc-650 cursor-not-allowed'
+                            }`}
+                            title="Simula quando o overlay nativo é desenhado na tela para a transmissão"
+                          >
+                            2. Renderizar 3D
+                          </button>
+
+                          <button
+                            onClick={() => firebaseService.markGiftFailedForStudio(selectedRoomId, ev.id, 'Dispositivo Direct3D perdido na fila de render')}
+                            disabled={status === 'rendered' || status === 'failed'}
+                            className={`px-2.5 py-1.5 rounded-lg text-[10px] font-mono uppercase font-black transition ${
+                              status !== 'rendered' && status !== 'failed'
+                                ? 'bg-red-950/80 hover:bg-red-900/60 text-red-400 border border-red-500/20 cursor-pointer active:scale-95'
+                                : 'bg-zinc-900 text-zinc-650 cursor-not-allowed'
+                            }`}
+                            title="Simula as falhas técnicas de GPU ou buffer que o Studio Windows reportará"
+                          >
+                            Forçar Falha
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {giftEvents.length === 0 && (
+                    <div className="py-16 text-center text-zinc-550 border border-dashed border-white/5 rounded-2xl">
+                      <History className="w-8 h-8 text-zinc-650 mx-auto mb-2 animate-pulse" />
+                      <p className="font-mono text-xs uppercase tracking-wide">Nenhum mimo enviado nesta sala ainda.</p>
+                      <p className="text-[10px] text-zinc-500 mt-1 mx-auto max-w-sm">
+                        Envie presentes na aba da sala de luta (/sala/:roomId) para visualizar a chegada de eventos ao vivo e as ações do app para Windows no painel de controle administrativo!
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
             </div>
           </div>
         )}

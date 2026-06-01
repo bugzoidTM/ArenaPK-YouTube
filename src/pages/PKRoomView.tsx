@@ -48,6 +48,12 @@ export default function PKRoomView({
   const [floatingAnimations, setFloatingAnimations] = useState<FloatingGiftAnimation[]>([]);
   const [realtimeEngine, setRealtimeEngine] = useState<'mock_ws' | 'socketio' | 'supabase' | 'firebase' | 'durable_objects'>('mock_ws');
   const [engineNotification, setEngineNotification] = useState<string | null>(null);
+
+  // Custom states for official YouTube player compliance (autoplay/mute/controls)
+  const [playersStarted, setPlayersStarted] = useState(false);
+  const [isMutedA, setIsMutedA] = useState(true);
+  const [isMutedB, setIsMutedB] = useState(true);
+
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   // Sync room reference to avoid stale closures in realtime handlers
@@ -331,6 +337,12 @@ export default function PKRoomView({
       onCoinsChange(txRes.coinsBalance);
       paymentService.setCoins(txRes.coinsBalance);
       viewerService.triggerMissionAction('send_gift', 1);
+
+      // Register IDs to prevent duplicate snapshots/animations locally
+      const response = txRes as any;
+      if (response.eventId) realtimeService.addProcessedGiftId(response.eventId);
+      if (response.chatMsgId) realtimeService.addProcessedChatId(response.chatMsgId);
+
       triggerFloatingAnimation('Você (Super Doador)', gift.name, gift.icon, isForA);
     } else {
       alert('Erro ao enviar o presente. Verifique seu saldo ou conexão.');
@@ -546,33 +558,72 @@ export default function PKRoomView({
       </div>
 
       {activeTab === 'stream' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch font-sans">
           
           {/* Side by side streaming panels */}
           <div className="lg:col-span-8 flex flex-col space-y-4">
+            
+            {/* COMPOSITE VIDEO CONTROLS SWITCHER DECK */}
+            <div className="bg-zinc-950/75 border border-white/10 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 select-none backdrop-blur-md shadow-2xl">
+              <div className="flex items-center gap-3">
+                <div className={`w-3.5 h-3.5 rounded-full ${playersStarted ? 'bg-emerald-500 animate-ping' : 'bg-rose-500 animate-pulse'}`} />
+                <div className="text-left">
+                  <span className="text-xs font-mono font-black uppercase tracking-wider text-zinc-100 block">Painel Geral de Transmissão PK:</span>
+                  <p className="text-[10px] text-zinc-400 leading-tight">
+                    {playersStarted 
+                      ? 'Transmissões do YouTube ativas • Controles oficiais habilitados' 
+                      : 'Carregando links de streaming de forma pausada para áudio seguro'
+                    }
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {!playersStarted ? (
+                  <button
+                    onClick={() => setPlayersStarted(true)}
+                    className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-black uppercase rounded-xl tracking-wider shadow-lg shadow-rose-600/15 cursor-pointer active:scale-95 transition-all flex items-center gap-2 border border-white/5 font-mono"
+                  >
+                    <Radio className="w-4 h-4 text-white animate-pulse" />
+                    Iniciar Players Simultâneos
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Mute Control A */}
+                    <button
+                      onClick={() => setIsMutedA(!isMutedA)}
+                      className={`px-3 py-2 rounded-xl text-[10px] font-bold font-mono tracking-wider transition-all cursor-pointer border ${
+                        isMutedA 
+                          ? 'bg-zinc-950 border-white/5 text-zinc-400 hover:bg-zinc-900' 
+                          : 'bg-rose-950/40 border-rose-500/45 text-rose-400 hover:bg-rose-950/60'
+                      }`}
+                      title="Alternar áudio da Live Red"
+                    >
+                      {isMutedA ? <VolumeX className="w-3.5 h-3.5 inline mr-1" /> : <Volume2 className="w-3.5 h-3.5 inline mr-1 animate-pulse" />}
+                      LADO RED: {isMutedA ? 'MUDADO' : 'ESCUTAR'}
+                    </button>
+
+                    {/* Mute Control B */}
+                    <button
+                      onClick={() => setIsMutedB(!isMutedB)}
+                      className={`px-3 py-2 rounded-xl text-[10px] font-bold font-mono tracking-wider transition-all cursor-pointer border ${
+                        isMutedB 
+                          ? 'bg-zinc-950 border-white/5 text-zinc-400 hover:bg-zinc-900' 
+                          : 'bg-blue-955 border-blue-500/45 text-blue-400 hover:bg-blue-950/60'
+                      }`}
+                      title="Alternar áudio da Live Blue"
+                    >
+                      {isMutedB ? <VolumeX className="w-3.5 h-3.5 inline mr-1" /> : <Volume2 className="w-3.5 h-3.5 inline mr-1 animate-pulse" />}
+                      LADO BLUE: {isMutedB ? 'MUDADO' : 'ESCUTAR'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* SIDE BY SIDE PLAYERS CONTAINER */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-zinc-900 border border-white/10 p-4 rounded-3xl relative overflow-hidden backdrop-blur-md shadow-inner">
               
-              {/* Floating Gift Visual Assets */}
-              {floatingAnimations.map((anim) => (
-                <div
-                  key={anim.id}
-                  className="absolute pointer-events-none z-50 text-center animate-bounce transition duration-150"
-                  style={{
-                    left: anim.isForA ? `calc(${anim.x}% / 2)` : `calc(50% + ${anim.x}% / 2)`,
-                    top: `${anim.y}%`,
-                    transform: 'translate(-50%, -50%)',
-                  }}
-                >
-                  <div className="bg-zinc-955 border border-amber-400 rounded-xl px-3 py-1.5 flex items-center gap-1.5 shadow-2l whitespace-nowrap truncate max-w-[150px]">
-                    <span className="text-lg">{anim.giftIcon}</span>
-                    <div className="text-[10px] text-left">
-                      <span className="font-extrabold text-amber-400 block leading-tight">{anim.sender}</span>
-                      <span className="text-zinc-400 block truncate leading-tight">{anim.giftName}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-
               {/* FEED CREATOR A (RED) */}
               <div className="flex flex-col bg-zinc-950/80 rounded-2xl overflow-hidden border border-rose-500/30 flex-1 min-h-[300px] shadow-lg relative">
                 <div className="bg-gradient-to-r from-rose-950/30 to-zinc-900 px-3 py-2 flex items-center justify-between border-b border-rose-500/20 text-xs font-bold uppercase select-none">
@@ -583,11 +634,24 @@ export default function PKRoomView({
                 </div>
 
                 <div className="bg-black relative aspect-video flex-1 flex items-center justify-center overflow-hidden">
-                  {room.liveA.videoId ? (
+                  {!playersStarted ? (
+                    /* COMPLIANT INTERACTIVE PRE-ROLL SWITCH CONTAINER */
+                    <div className="absolute inset-0 bg-zinc-950/90 flex flex-col items-center justify-center p-6 text-center select-none z-20">
+                      <div className="w-12 h-12 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-center justify-center mb-3 animate-pulse text-rose-500">
+                        <Tv className="w-6 h-6" />
+                      </div>
+                      <h4 className="text-xs font-black uppercase text-zinc-100 tracking-tight font-sans">
+                        Transmissão Red {room.creatorA.name}
+                      </h4>
+                      <p className="text-[10px] text-zinc-400 mt-1 max-w-xs leading-normal font-sans">
+                        Clique em <strong className="text-rose-500 font-bold">Iniciar Players</strong> no painel de switcher para sincronizar e carregar os feeds de áudio e vídeo com o YouTube.
+                      </p>
+                    </div>
+                  ) : room.liveA.videoId ? (
                     <iframe
-                      src={`https://www.youtube.com/embed/${room.liveA.videoId}?autoplay=1&mute=1&controls=0&rel=0`}
+                      src={`https://www.youtube.com/embed/${room.liveA.videoId}?autoplay=1&mute=${isMutedA ? 1 : 0}&controls=1&rel=0`}
                       title={`Live Stream Casimiro`}
-                      className="absolute inset-0 w-full h-full border-0"
+                      className="absolute inset-0 w-full h-full border-0 z-10"
                       allow="autoplay; encrypted-media"
                       referrerPolicy="no-referrer"
                     />
@@ -598,11 +662,11 @@ export default function PKRoomView({
                     </div>
                   )}
 
-                  <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[9px] font-bold text-zinc-400 border border-white/5 uppercase select-none font-mono">
+                  <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[9px] font-bold text-zinc-400 border border-white/5 uppercase select-none font-mono z-15">
                     FPS: 60 • BPS: 6200Kbps
                   </div>
 
-                  <div className="absolute bottom-2 right-2 bg-rose-600/90 text-white font-mono text-[9px] font-black px-1.5 py-0.5 rounded font-mono select-none">
+                  <div className="absolute bottom-2 right-2 bg-rose-600/95 text-white font-mono text-[9px] font-black px-1.5 py-0.5 rounded select-none z-15">
                     PLAYER RED
                   </div>
                 </div>
@@ -635,11 +699,24 @@ export default function PKRoomView({
                 </div>
 
                 <div className="bg-black relative aspect-video flex-1 flex items-center justify-center overflow-hidden">
-                  {room.liveB.videoId ? (
+                  {!playersStarted ? (
+                    /* COMPLIANT INTERACTIVE PRE-ROLL SWITCH CONTAINER */
+                    <div className="absolute inset-0 bg-zinc-950/90 flex flex-col items-center justify-center p-6 text-center select-none z-20">
+                      <div className="w-12 h-12 bg-blue-500/10 border border-blue-500/30 rounded-2xl flex items-center justify-center mb-3 animate-pulse text-blue-500">
+                        <Tv className="w-6 h-6" />
+                      </div>
+                      <h4 className="text-xs font-black uppercase text-zinc-100 tracking-tight font-sans">
+                        Transmissão Blue {room.creatorB.name}
+                      </h4>
+                      <p className="text-[10px] text-zinc-400 mt-1 max-w-xs leading-normal font-sans">
+                        Clique em <strong className="text-blue-500 font-bold">Iniciar Players</strong> no painel de switcher para sincronizar e carregar os feeds de áudio e vídeo com o YouTube.
+                      </p>
+                    </div>
+                  ) : room.liveB.videoId ? (
                     <iframe
-                      src={`https://www.youtube.com/embed/${room.liveB.videoId}?autoplay=1&mute=1&controls=0&rel=0`}
+                      src={`https://www.youtube.com/embed/${room.liveB.videoId}?autoplay=1&mute=${isMutedB ? 1 : 0}&controls=1&rel=0`}
                       title={`Live Stream Adversário B`}
-                      className="absolute inset-0 w-full h-full border-0"
+                      className="absolute inset-0 w-full h-full border-0 z-10"
                       allow="autoplay; encrypted-media"
                       referrerPolicy="no-referrer"
                     />
@@ -650,11 +727,11 @@ export default function PKRoomView({
                     </div>
                   )}
 
-                  <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[9px] font-bold text-zinc-400 border border-white/5 uppercase select-none font-mono">
+                  <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[9px] font-bold text-zinc-400 border border-white/5 uppercase select-none font-mono z-15">
                     FPS: 60 • BPS: 5400Kbps
                   </div>
 
-                  <div className="absolute bottom-2 right-2 bg-blue-600/90 text-white font-mono text-[9px] font-black px-1.5 py-0.5 rounded font-mono select-none">
+                  <div className="absolute bottom-2 right-2 bg-blue-600/95 text-white font-mono text-[9px] font-black px-1.5 py-0.5 rounded select-none z-15">
                     PLAYER BLUE
                   </div>
                 </div>
@@ -678,6 +755,39 @@ export default function PKRoomView({
 
               </div>
               
+            </div>
+
+            {/* EYE-CATCHING SAFETY BOUNDED AREA FOR GIFT ANIMATIONS */}
+            <div className="bg-zinc-900 border border-white/10 p-5 rounded-3xl relative overflow-hidden text-center min-h-[140px] flex flex-col justify-center shadow-lg">
+              <div className="absolute inset-0 bg-gradient-to-b from-transparent via-zinc-950/10 to-zinc-950/35 pointer-events-none" />
+              
+              <div className="flex items-center justify-center gap-1 text-rose-500 uppercase text-[10px] font-mono tracking-widest font-black mb-1.5 z-10">
+                <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+                <span>Mural de Animações de Presentes da Arena (Visual Area)</span>
+              </div>
+              <p className="text-[9px] text-zinc-500 font-mono uppercase mb-3 z-10">Visualização de apoios em alta-relevância gráfica</p>
+
+              <div className="relative w-full min-h-[75px] flex flex-wrap gap-4 items-center justify-center z-10 px-4">
+                {floatingAnimations.map((anim) => (
+                  <div
+                    key={anim.id}
+                    className="animate-bounce transition duration-300 transform scale-100 flex items-center bg-zinc-950 border border-amber-400 rounded-xl px-3 py-1.5 gap-2 shadow-2xl whitespace-nowrap border-b-2"
+                  >
+                    <span className="text-2xl filter drop-shadow">{anim.giftIcon}</span>
+                    <div className="text-left select-none">
+                      <span className="font-extrabold text-amber-400 text-[10px] block leading-tight">{anim.sender}</span>
+                      <span className="text-rose-400 font-bold text-[9px] block">Apoiou {anim.isForA ? `${room.creatorA.name} 🔴` : `${room.creatorB.name} 🔵`}</span>
+                      <span className="text-zinc-400 text-[9px] block leading-normal">{anim.giftName}</span>
+                    </div>
+                  </div>
+                ))}
+
+                {floatingAnimations.length === 0 && (
+                  <p className="text-xs text-zinc-500 font-mono italic select-none">
+                    Aguardando mimos virtuais interativos dos espectadores...
+                  </p>
+                )}
+              </div>
             </div>
 
             {/* Gift Store Block list */}

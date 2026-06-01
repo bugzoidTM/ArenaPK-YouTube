@@ -132,6 +132,19 @@ class FirebaseService {
     });
   }
 
+  public async updateRoomScore(roomId: string, scoreA: number, scoreB: number): Promise<void> {
+    try {
+      const roomRef = doc(db, 'pkRooms', roomId);
+      await updateDoc(roomRef, {
+        scoreA,
+        scoreB,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `pkRooms/${roomId}`);
+    }
+  }
+
   // ==========================================
   // CHAT MESSAGES COLLECTION
   // ==========================================
@@ -415,6 +428,7 @@ class FirebaseService {
     const walletRef = doc(db, 'wallets', `wallet-${userId}`);
     const roomRef = doc(db, 'pkRooms', roomId);
     const rankingSubRef = doc(db, 'pkRooms', roomId, 'ranking', 'current');
+    const sponsorRankingRef = doc(db, 'pkRooms', roomId, 'ranking', userId);
 
     const eventId = `gift-event-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
     const chatMsgId = `chat-msg-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
@@ -442,6 +456,19 @@ class FirebaseService {
           throw new Error('PK Room does not exist');
         }
         const roomData = roomSnap.data() as PKRoom;
+
+        // 3b. Read Sponsor Ranking
+        const sponsorRankingSnap = await transaction.get(sponsorRankingRef);
+        let existingSponsorData = {
+          senderId: userId,
+          senderName,
+          senderAvatar,
+          totalCoinsSupported: 0,
+          totalPointsSupported: 0
+        };
+        if (sponsorRankingSnap.exists()) {
+          existingSponsorData = sponsorRankingSnap.data() as any;
+        }
 
         // 4. Calculate updated scores & rankings
         const currentScoreA = roomData.scoreA || 0;
@@ -479,28 +506,52 @@ class FirebaseService {
           updatedAt: new Date().toISOString()
         });
 
-        // 8. Write the atomic giftEvent inside subcollection
+        // 7b. Write sponsor ranking under pkRooms/{roomId}/ranking/{senderId}
+        const nextSponsorCoins = (existingSponsorData.totalCoinsSupported || 0) + gift.coinValue;
+        const nextSponsorPoints = (existingSponsorData.totalPointsSupported || 0) + gift.pkPointsBonus;
+        transaction.set(sponsorRankingRef, {
+          senderId: userId,
+          senderName,
+          senderAvatar,
+          totalCoinsSupported: nextSponsorCoins,
+          totalPointsSupported: nextSponsorPoints,
+          updatedAt: new Date().toISOString()
+        });
+
+        // 8. Write the atomic giftEvent inside subcollection with strict future Studio contract fields
         transaction.set(giftEventRef, {
           id: eventId,
           roomId,
+          targetCreatorId: isForCreatorA ? roomData.creatorA.id : roomData.creatorB.id,
+          targetSide: isForCreatorA ? "A" : "B",
+          senderId: userId,
           senderName,
           senderAvatar,
+          giftId: gift.id,
           giftName: gift.name,
           giftIcon: gift.icon,
           coinValue: gift.coinValue,
           pkPointsBonus: gift.pkPointsBonus,
-          isForCreatorA,
-          timestamp: new Date().toISOString()
+          animationType: gift.animationType,
+          studioDeliveryStatus: "pending",
+          createdAt: new Date().toISOString(),
+          timestamp: new Date().toISOString(), // Keep timestamp for backward compatibility
+          deliveredAt: null,
+          renderedAt: null
         });
 
         // 9. Write the automatic message into chatMessages subcollection
         transaction.set(chatMessageRef, {
           id: chatMsgId,
+          roomId,
+          senderId: userId,
           senderName,
           senderAvatar,
           role: 'sponsor',
+          type: 'gift',
           text: `Enviou ${gift.name} ${gift.icon}! (+${gift.pkPointsBonus.toLocaleString()} pts de PK)`,
           timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+          createdAt: new Date().toISOString(),
           giftAttached: {
             giftName: gift.name,
             giftIcon: gift.icon,
@@ -539,6 +590,46 @@ class FirebaseService {
         scoreA: 0,
         scoreB: 0
       };
+    }
+  }
+
+  // ==========================================
+  // ARENAPK STUDIO CONVERSIONS & STATUS MANAGEMENT
+  // ==========================================
+  public async markGiftDeliveredToStudio(roomId: string, giftEventId: string): Promise<void> {
+    try {
+      const ref = doc(db, 'pkRooms', roomId, 'giftEvents', giftEventId);
+      await updateDoc(ref, {
+        studioDeliveryStatus: 'delivered_to_studio',
+        deliveredAt: new Date().toISOString()
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `pkRooms/${roomId}/giftEvents/${giftEventId}`);
+    }
+  }
+
+  public async markGiftRenderedByStudio(roomId: string, giftEventId: string): Promise<void> {
+    try {
+      const ref = doc(db, 'pkRooms', roomId, 'giftEvents', giftEventId);
+      await updateDoc(ref, {
+        studioDeliveryStatus: 'rendered',
+        renderedAt: new Date().toISOString()
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `pkRooms/${roomId}/giftEvents/${giftEventId}`);
+    }
+  }
+
+  public async markGiftFailedForStudio(roomId: string, giftEventId: string, reason: string): Promise<void> {
+    try {
+      const ref = doc(db, 'pkRooms', roomId, 'giftEvents', giftEventId);
+      await updateDoc(ref, {
+        studioDeliveryStatus: 'failed',
+        failureReason: reason,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `pkRooms/${roomId}/giftEvents/${giftEventId}`);
     }
   }
 }
